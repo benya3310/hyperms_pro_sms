@@ -1,0 +1,331 @@
+<HTML>
+<HEAD><TITLE>Cellular Gateways - Settings</TITLE></HEAD>
+<link type="text/css" href="../default.css" rel="stylesheet">
+<SCRIPT language=javascript src="../utils/utilfuncs.js"></SCRIPT>
+<SCRIPT language=javascript src="../utils/alloc_logic.js"></SCRIPT>
+<SCRIPT>
+
+var G_strLastSelectedCard;
+
+G_strFeatureDesc  = "<b>SIM Server mode:</b>";
+G_FeatureValue    = "";
+
+var G_bInSavingProcess = false;
+
+var G_nTimerID;
+var G_strDefTextDesc = "Enabled (Smart SIM rack mode)";
+
+
+//if rpely conatins P val app will use a specific description
+var G_nPValue       = "";						
+var G_arrPTextDesc = [ 
+/* 0*/	"Enabled",
+/* 1*/	"Enabled (Smart SIM rack mode)",
+/* 2*/	"Enabled (SIM Server Plus mode)",
+/* 3*/	"Enabled",
+/* 4*/	"Enabled",
+/* 5*/	"Enabled",
+/* 6*/	"Enabled",
+/* 7*/	"Enabled",
+/* 8*/	"Enabled",
+/* 9*/	"Enabled",
+/*10*/	"Enabled"
+];
+
+// Received command from applet
+/**********************************************************************************************/
+function init()
+/**********************************************************************************************/
+{
+    getGWConfig();
+}
+
+/**********************************************************************************************/
+function getGWConfig()
+/**********************************************************************************************/
+{
+    parent.frames[0].SendCommand( "GetGWConfig" );
+}
+
+/**********************************************************************************************/
+function onSelectCard( strCard, strCardType )
+/**********************************************************************************************/
+{
+    var nSlot = G_configInfo.calcSlotNumber( strCard );
+    G_strLastSelectedCard = strCard;
+	cleanDivs();
+    getFeature();
+    document.getElementById("update_settings").innerHTML = getSelCardText( nSlot, strCardType );
+}
+
+/**********************************************************************************************/
+function showSave()
+/**********************************************************************************************/
+{
+    var strSave = utils_getButtonHTML( "saveConfig()", "SaveSettings.jpg" );
+    document.getElementById("DIV_SaveConfig").innerHTML = strSave;
+}
+
+/**********************************************************************************************/
+function setSaveAckTimer()
+/**********************************************************************************************/
+{
+	G_bInSavingProcess = false; 
+	document.getElementById("DIV_SaveConfig").innerHTML = "Error saving, please try again.";
+}
+
+/**********************************************************************************************/
+function saveConfig()
+/**********************************************************************************************/
+{
+	
+	G_bInSavingProcess = true;
+	clearTimeout( G_nTimerID );
+	G_nTimerID = setTimeout(setSaveAckTimer,15000);		
+	saveFeature()
+}
+
+/**********************************************************************************************/
+function saveFeature ()
+/**********************************************************************************************/
+{	
+	var obj = document.getElementById("txtSettings");
+	
+	if ( obj != null )
+	{
+		if ( obj.value == "0" )
+		{            
+			
+				document.getElementById("txtSettings" ).disabled = true;
+				document.getElementById("cbSettings").checked   = false;
+			
+		}
+
+	    if ( IsNumeric( obj.value ) == false )
+	    {
+	        alert ( "Value should be a valid number!");
+	        return;
+	    }
+	    var strCommand = "SendGenericPacket 3d:/A" + G_strLastSelectedCard;
+	    strCommand += "/I111/G11/i" + obj.value;
+	    parent.frames[0].SendCommand( strCommand );
+	    document.getElementById("DIV_SaveConfig").innerHTML = "Saving configuration...";
+	}
+	else
+	{
+		G_bInSavingProcess = false;
+	}
+}
+
+/**********************************************************************************************/
+function OnData( strMessage )
+/**********************************************************************************************/
+{   
+    var strCommand = new String( strMessage );
+    var strParam = strCommand.split( " " );
+    var strSection;
+    
+    var packStr = new PacketString( strParam[1] );
+    
+    switch ( strParam[0] )
+    {
+        case "GWConfigInfo":
+        {
+			var objSelect = G_configInfo.getSelectCardHTML( packStr, "CG4.0", "Select cellular card", "onSelectCard" );
+            var strHTML = objSelect.m_strHTML;
+			var strSelCard = objSelect.m_strSelCard;
+			var strSelCardType = objSelect.m_strSelCardType;
+            document.getElementById("selectcard").innerHTML = strHTML;
+            if ( strSelCard != null )
+            {
+                onSelectCard( strSelCard, strSelCardType );
+            } 
+            break;
+        }
+        
+        case "Ack":
+        {
+			if ( G_bInSavingProcess )
+			{
+				document.getElementById("DIV_SaveConfig").innerHTML = 'Configuration saved ("Save All Settings" required for activation).';
+				G_bInSavingProcess = false;
+				clearTimeout( G_nTimerID );
+			
+			}
+			break;
+        }
+        
+        case "GWError":
+        {
+			if ( packStr.getSection( "R" ) == "6F" )
+		 	{
+				notSupported();
+			}
+			else
+			{
+				if ( packStr.getSection( "I" ) == "770" )
+				{
+					//Query failed
+					notSupported();
+				}					
+				else
+				{
+					G_bInSavingProcess = false;
+					clearTimeout( G_nTimerID );
+					document.getElementById("DIV_SaveConfig").innerHTML = "Error saving configuration.";
+				}
+			}
+			break;
+        }
+
+        case "GenericReply":
+        {
+			
+			if ( strParam[1].indexOf( "/#3d" ) > -1 )
+            {
+           		var nFeatureNum = parseInt( packStr.getSection( "g" ) );
+				var strValue    = packStr.getSection( "i" );
+				var strPValue   = packStr.getSection( "P" );
+				G_FeatureValue = strValue;
+				
+				if ( strValue == "" )
+				{					
+					notSupported();
+					return;
+				}
+				if ( strPValue != null )
+				{					
+					G_nPValue = getPValue( strPValue);					
+				}
+				
+				showTables();							
+            }
+			break;   
+        }
+        
+        default:
+        {
+            break;
+        }
+    }
+}
+/**********************************************************************************************/
+function getPValue( val )
+/**********************************************************************************************/
+{
+	val = val.replace(/\(/gi, "");	
+	val = val.replace(/\)/gi, "");	
+	val = val.split(",")[1];
+	return val;
+}
+/**********************************************************************************************/
+function showTables()
+/**********************************************************************************************/
+{
+	var strHTML = "<table bgcolor='whitesmoke'>";
+
+	strHTML += DisplayTable();
+	
+	strHTML += "</table>";
+	document.getElementById("DIV_Values").innerHTML = strHTML;
+}
+
+/**********************************************************************************************/
+function DisplayTable(  )
+/**********************************************************************************************/
+{
+	var strHTML = "<tr><td><table border='0' bgcolor=white>";
+	strHTML += "<tr><td colspan='2' width='400'>" + G_strFeatureDesc + "</td></tr>";
+	strHTML += "<td width=20%>";
+	if ( G_nPValue == "" )
+	{
+		strHTML += 	 G_strDefTextDesc + "<INPUT TYPE='checkbox' NAME='cbSettings' ";
+	}
+	else
+	{
+		strHTML += 	 G_arrPTextDesc[G_nPValue] + "<INPUT TYPE='checkbox' NAME='cbSettings' ";
+	}
+	
+	if ( G_FeatureValue != "0" )
+	{	       
+		strHTML += "CHECKED";
+	}
+	strHTML += " onClick='clickFunction()' ></td>";
+	strHTML += "<td><INPUT TYPE=HIDDEN size=1 name='txtSettings'";
+	strHTML += " value='" + G_FeatureValue + "'> ";
+	
+	strHTML += "</td></tr>";
+
+	
+	strHTML += "</table></td></tr>";
+    return strHTML;
+}
+
+/**********************************************************************************************/
+function clickFunction(  )
+/**********************************************************************************************/
+{
+	if ( document.getElementById("cbSettings").checked == true )
+	{	
+		document.getElementById("txtSettings").value = (G_nPValue != "" ) ? G_nPValue : "1";	
+	}
+	else
+	{	
+		document.getElementById("txtSettings").value = "0";
+	}
+	
+	showSave();
+	
+}
+
+/**********************************************************************************************/
+function getFeature()
+/**********************************************************************************************/
+{   //Check fetaure #11
+    var strCommand = "SendGenericPacket 3d:/A" + G_strLastSelectedCard;
+	strCommand += "/I770/Q11";
+	parent.frames[0].SendCommand( strCommand );
+	
+	
+}
+
+/**********************************************************************************************/
+function cleanDivs()
+/**********************************************************************************************/
+{
+	document.getElementById("DIV_SaveConfig").innerHTML = "";
+	document.getElementById("DIV_Values").innerHTML = "";
+}
+
+/**********************************************************************************************/
+function notSupported()
+/**********************************************************************************************/
+{
+	var strHTML = "<table><tr><td>SIM Server mode is not supported by this card.</td></tr></table>";
+	cleanDivs();
+	document.getElementById("DIV_Values").innerHTML = strHTML;
+}
+
+</SCRIPT>
+
+<BODY onLoad="init()" bgcolor="white" ondragstart="return false;">
+<font size=4 face="Arial">SIM Server - Card Settings</font>
+<hr>
+
+<font face=Arial size=2>
+<div id="selectcard"></div>
+
+<div id="update_settings"></div>
+<br>
+
+<div id="DIV_Values" style="width:450px;height:75px;overflow:auto;">
+</div>
+
+<br>
+<div id="DIV_SaveConfig">
+</div>
+
+</font>
+
+</BODY>
+</HTML>

@@ -1,0 +1,342 @@
+<html>
+
+<head>
+<meta http-equiv="Content-Language" content="en-us">
+<link type=text/css href="../default.css" rel=stylesheet>
+<title>Groups Setup</title>
+</head>
+
+<body onload="init()">
+
+<script src="../js/prototype.js" type="text/javascript"></script>
+<script src="../js/prototype.addon.js" type="text/javascript"></script>
+	
+<script src="../js/LCRGuiUtils.js" type="text/javascript"></script>
+<script src="../js/utilfuncs.js" type="text/javascript"></script>
+<script src="../js/alloc_logic.js" type="text/javascript"></script>
+<script src="../js/ConfigInfo.js" type="text/javascript"></script>
+
+<script type="text/javascript">
+	try{
+		var modelessDialog;
+		
+		var iConnected = 1;
+		var iMode = "reading";
+		var G_nID = 0;
+		var G_strConnectState = "NotConnected";
+		var G_strConnectionText;
+		
+		var G_arVersions;
+		var G_arSerials;
+		
+		var G_arHistory = new Array();
+		var G_nLast = 0;
+		
+		G_arClearCommands = new Array();
+		G_nClearCommandsIndex = 0;
+		
+		var G_RuleCollection = new Array();
+		
+		var G_strPass;
+		
+		var G_CurrentGroup= 0;
+		var G_currentWritingGroup= 0;
+		var arGroup;
+		
+		
+		var G_CurrentGroup = 0;
+	}
+	catch(exception){
+	    alert ( exception );
+	    window.location.href = "LCR-BlankRight.htm";
+	}
+
+	function init()
+	{
+		parent.frames[0].SendCommand( "GetGWConfig" );
+	}
+	function OnData(strMessage)
+	{        
+		
+	    var strCommand = new String( strMessage );
+	    var arParam = strCommand.split( " " );
+	
+		if ( arParam.length < 1 )
+		{
+		return;
+		}
+		var packStr = new PacketString( arParam[ 1 ] );
+		var strID = packStr.getSection( "I" );
+		var response;
+		
+		if (arParam[0] == "GWConfigInfo")
+		{
+			 //alert(packStr.getSection( "c" ));
+            if ( packStr.getSection( "c" ).indexOf("LCR") == -1 )
+				{
+					// no LCR
+                    $(groupSaveButton).disabled = true;
+                    document.getElementById("GroupsTable").innerHTML = "No LCR was found.";
+                    document.getElementById("Default-Wizard").innerHTML = "";
+					return;
+				
+				}
+				else
+				{					
+					GLBCardConfig = new LCRConfig(arParam[1]);
+					
+					G_RuleCollection = new Array(NumOfGroups());
+					arGroup = new Array(NumOfGroups());
+					SendCommand(PCAddressCommand);
+					return;
+				}
+				
+		}
+			
+			
+		
+		if (arParam[0] == "CardInfo" && strID == "836")
+		{
+			sectionG = packStr.getSection("g");
+			PCAddress = packStr.getSection("A");
+			
+			SendCommand(LCRGroupCollection.queryCommand);
+			
+			return;
+		}
+		if (strID == "777")
+		{        
+			LCRGroupCollection.parseGroups(strMessage);
+			PollLcr("30");			
+			return;
+		}	
+	
+		if (strID == "830"){
+	
+	
+			sectionG = packStr.getSection("g");
+			if (sectionG != null){
+				GLBCardConfig.InitResources(sectionG.split(","));}
+			else{
+				GLBCardConfig.InitResources(null);
+			}
+			
+			readLcrData();
+			
+		}
+			
+		
+		if (strID == "832" && G_CurrentGroup <= NumOfGroups() && iConnected == 1){
+			
+			parseGroup(strMessage);
+			GetNextGroup();
+			return;
+		}
+		
+		if (strID == "932" && G_currentWritingGroup<= NumOfGroups() && iConnected == 1){
+			SetNextGroup();
+			return;
+		}
+	    
+	}
+	
+	function parseGroup(lcrMsg){ //(arLcrData){
+		//var groupNum = arLcrData[0];
+		arGroup[G_CurrentGroup] = lcrMsg;
+	}
+	function HandleSessionErrorEx(ErrNumber, ErrDescription)
+	{
+	    alert(ErrDescription);
+	}
+	
+	
+	function readLcrData(){
+	    try{
+		    GetNextGroup();
+		}
+			catch(exception){
+			alert(exception);
+		    window.location.href = "LCR-BlankRight.html";
+		}
+	
+	}
+	
+	
+	function GetNextGroup(){
+		if (G_CurrentGroup <  NumOfGroups() ){
+			G_CurrentGroup++;
+			updateProgress(prgrsBrReadingMsg,G_CurrentGroup, NumOfGroups() );
+			ReadGroup();
+			return;
+		}
+		
+		loadGroupTable();
+	}
+	
+	function ReadGroup(){
+		parent.frames[0].SendCommand("SendGenericPacket 32:/x1,0/ALCR/I832/Q" + G_CurrentGroup.toString());
+	}
+	
+	function loadGroupTable(){
+		
+		document.getElementById("GroupsTable").innerHTML = RenderGroupTable(arGroup);
+		G_CurrentGroup = 0;
+	}
+	
+	function writeLcrData(){
+		SetNextGroup();
+	}
+	function SetNextGroup(){
+		if (G_currentWritingGroup <  NumOfGroups() ){
+			G_currentWritingGroup ++;
+			updateProgress(prgrsBrWritingMsg,G_currentWritingGroup, NumOfGroups() );
+			sendGroupCommand(G_currentWritingGroup);
+			return;
+		}
+	
+		G_currentWritingGroup =0;
+	}
+	
+	function sendGroupCommand(strGroupNum){
+	
+		var strCyclic = $("group" + strGroupNum.toString() + "CyclicCombo").value;
+		var strFilter = $("group" + strGroupNum.toString() + "FilterCombo").value;
+		var strRouting = $("group" + strGroupNum.toString() + "RoutingCombo").value;
+		var strReport = ($("reportChk" + strGroupNum.toString()).checked )?  + getPCAddress() : "";
+		var strGroupName = $('groupName_' + strGroupNum).value;
+		var strInFilter = $('GroupInFilter' + strGroupNum).value;
+       var strIntelliRoute = ""; 
+       var objIntelliRoute = $("intelliRouteChk" + strGroupNum.toString())        
+       if ( objIntelliRoute != undefined )           
+            strIntelliRoute =  ( objIntelliRoute.checked == true ) ?  ",1" : ",0";
+		
+		var commandParams;
+		commandParams = 
+			strGroupNum + "," + 
+			strCyclic + "," + 
+			strFilter + "," + 
+			strRouting + "," +
+			strReport + "," +
+			strInFilter + "," +
+			"/i\"" + strGroupName + "\"" +
+           strIntelliRoute;
+        
+		parent.frames[0].SendCommand("SendGenericPacket 32:/x1,0/ALCR/I932/G" + commandParams);
+		
+	}
+	
+	var prgrsBrReadingMsg = "Loading Groups";
+	var prgrsBrWritingMsg = "Updating Groups";
+	
+	function NumOfGroups(){
+		return GetConfiguration().NumberOfGroups();
+	}
+	
+	var PCAddressCommand = "SendGenericPacket 65:/AFF/I836";
+	var PCAddress="";
+	function getPCAddress(){
+		return PCAddress;
+	}
+	
+	var GLBCardConfig;
+	function GetConfig(){
+		return GLBCardConfig;
+	}
+	
+	function GetConfiguration(){
+		
+		return GetConfig();
+	}
+</script>
+
+
+
+
+<font class="settingHeader">
+	LCR Groups</font>
+	<hr class="hrLine" noshade>
+		 
+		<input type="button" value="Save Settings" id="groupSaveButton" class="Button" onclick="writeLcrData()"> 
+
+		<hr class="hrLine" noshade>
+<div id="prgrsBr" class="ProgressBar"></div>
+	<div id="GroupsTable"></div>
+	<div id="DIV_Connect" class="LogLine"></div>
+	<div id="DIV_Reply" class="LogLine"></div>
+	<hr class="hrLine">
+
+<div id="Default-Wizard">
+	<span class="title">Default Groups</span>
+		<br/>
+		<input type="button" class="button" value="Create Default Groups" id="createDefaultButton"/>
+		<br />
+		This will create the default Groups settings and the routing between them.
+	
+	<script type="text/javascript">
+		
+
+		function CreateDefaults(){
+			
+			for (var x=1; x <= NumOfGroups(); x++){
+				
+				$('group' + (x).toString() + 'CyclicCombo').value = '1';
+				$('group' + (x).toString() + 'FilterCombo').value = '';
+				$('group' + (x).toString() + 'RoutingCombo').value = '0';
+				$('reportChk' + (x).toString()).checked = false;				
+			}
+			
+			$('group2RoutingCombo').value = '1';
+			
+		}
+		
+		Event.observe('createDefaultButton','click',CreateDefaults, false);
+		
+	</script>
+</div>	
+<div id="helpSection">
+	<div class="title">Groups</div>
+	The systems allows defining of up to 16 groups of channels. Assignment of
+	a channel to a specific group will be made on the "Resource Map" page.<br>
+		<br />
+	On each call the system will scan for the next free channel on the chosen 
+	group. "Cyclic" means the LCR entity will start its scan from the channel 
+	after the last used one in that group. Otherwise, the scan for a free 
+	channel will always begin with the first one in that group. <br>
+		<br />
+	An IN-Filter assigned to a specific group will alter the destination number
+	for an incoming call through one of that group's resources (before the LCR
+	rules are checked for a match on the destination number).
+	An OUT-Filter assigned to a group will alter the destination number for an
+	outgoing call through one of the group's resources, after the rules have been
+	checked and the destination resource has be chosen.<br>
+		<br />
+	"Route to" should be used to route all calls from resources of one group
+	to another destination group, without analyzing the routing rules table.<br>
+		<br />
+	"Intelligent Routing" allows logging of all outgoing calls through a group,
+	then using these to determine the destination numbers for incoming calls,
+	ignoring the original destination numbers. Example: 1234 was calling 5678
+	through group 3, then 5678 is calling back through one of group 3's resources.
+	The call from 5678 will be routed to 1234 regardless of the destination number
+	dialed. When using on a group of GSM channels, please do not activate "Auto MSN"
+	on these.
+
+</div>
+<script type="text/javascript">
+
+function selectDeselect(){
+
+	var bSelected = document.getElementById("selectAllCheck").checked;
+	
+	document.getElementById("selectAllText").innerText = (bSelected) ?"Deselect All":"Select All  ";
+
+	for(i=1; i<= NumOfGroups(); i++){
+		document.getElementById("reportChk" + i.toString()).checked = bSelected;
+	}
+}
+</script>
+
+
+</body>
+
+</html>

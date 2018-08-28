@@ -1,0 +1,126 @@
+<html>
+<head>
+	<SCRIPT language=javascript src="../utils/utilfuncs.js"></SCRIPT>
+	<SCRIPT language=javascript src="../utils/alloc_logic.js"></SCRIPT>
+	<LINK REL=StyleSheet HREF="default.css" TYPE="text/css" MEDIA=screen>
+	<STYLE type=text/css>TABLE {
+	BORDER-RIGHT: #000000 1px solid; BORDER-TOP: #000000 1px solid; BORDER-LEFT: #000000 1px solid; BORDER-BOTTOM: #000000 1px solid; border-spacing: 0px;
+	}
+	TD {
+	PADDING-RIGHT: 0.5em; PADDING-LEFT: 0.5em; FONT-SIZE: 10pt; PADDING-BOTTOM: 2px; PADDING-TOP: 2px; FONT-FAMILY: Arial, Helvetica, sans-serif; WHITE-SPACE: nowrap
+	}
+</STYLE>
+</head>
+<SCRIPT>
+// Received command from applet
+
+function getGWConfig()
+{
+    parent.frames[0].SendCommand( "GetGWConfig" );
+}
+function OnData( strMessage )
+{
+    var strCommand = new String( strMessage );
+    var strParam = strCommand.split( " " );
+    var strSection;
+    
+    var packStr = new PacketString( strParam[1] );
+    
+    switch ( strParam[0] )
+    {
+        
+        
+        case "GWError":
+        {
+            alert( "Got error message:" + strMessage );
+            break;
+        }
+        
+        case "GWConfigInfo":
+        {
+			
+			var objSelect = G_configInfo.getSelectCardHTML( packStr, "CG4.0,CC4.0,CT4.1,CU4.1", "", "onSelectCard" );
+            var strHTML = objSelect.m_strHTML;
+			var strSelCard = objSelect.m_strSelCard;
+			var strSelCardType = objSelect.m_strSelCardType;
+			var arCards = G_configInfo.getCardsOfType(packStr, "CG4.0,CC4.0,CT4.1,CU4.1");
+			generateCardstable( arCards);
+          if ( strSelCard != null)
+          {
+            //gotoPHP( strHTML );
+          }
+          else
+          {
+            //document.getElementById("tbstatus").style.visibility = "hidden";
+          }
+            break;
+        }
+        
+        default:
+        {
+            //alert( "Got unknown message:" + strMessage );
+            break;
+        }
+    }
+}
+function generateCardstable( arCards )
+{
+	var str = "";	
+	for (var i=0; i<arCards.length; i++)
+	{
+		str +=  arCards[i].m_nSlot+ ",";
+	}
+var 	strHTML = "<br><table id='selSlotTbl' ><tr><td><b>Slot </b></td>";
+        
+        var nLastDeck = 0;
+        for (var i=0; i<arCards.length; i++ )
+        {
+            
+            var nSlot = arCards[i].m_nSlot;
+            
+            var nCurrDeck = Math.floor(nSlot / 16);
+            
+            if ( nCurrDeck != nLastDeck )
+            {
+                nLastDeck = nCurrDeck;
+                strHTML += "</tr><tr>";
+            }
+            
+            strHTML += "<td width=20>";
+            strHTML += "<input type=CHECKBOX name='c" + i + "' value='"+nSlot+"'>"+ nSlot;;
+            strHTML += "</td>";
+			
+			
+            
+			
+			
+        }
+        
+        strHTML += "</tr></table></font><br>";
+		gotoPHP( strHTML );
+}
+function onSelectCard( strCard, strCardType )
+{
+    var nSlot = G_configInfo.calcSlotNumber( strCard );	 
+    document.getElementById("update_settings").innerHTML = getSelCardText( nSlot, strCardType );
+	alert( document.getElementById("update_settings").innerHTML  );
+}
+
+function gotoPHP( strHTML )
+{
+	
+	var strServerName	= parent.frames[0].getServerIP();
+	var strPassword		= parent.frames[0].getPassword();
+	
+	var strLoc = "http://" + strServerName + "/cb/SchedulerNew.php?ip="+ strServerName+"&password=" + strPassword;
+	strLoc    += "&strHTML=" + strHTML; 
+	strLoc = strLoc.replace("#","%23")
+	
+	document.location.href = strLoc;
+}
+</script>
+<body onLoad="getGWConfig();">
+	<div id="selectcard"></div>
+	<div id="update_settings"></div>
+</body>
+</html>

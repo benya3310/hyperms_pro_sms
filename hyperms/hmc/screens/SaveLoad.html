@@ -1,0 +1,472 @@
+<HTML>
+<STYLE type=text/css>TABLE {
+	BORDER-RIGHT: #000000 1px solid; BORDER-TOP: #000000 1px solid; BORDER-LEFT: #000000 1px solid; BORDER-BOTTOM: #000000 1px solid; border-spacing: 0px; cell-spacing: 0px
+}
+TD {
+	PADDING-RIGHT: 0.5em; PADDING-LEFT: 0.5em; FONT-SIZE: 10pt; PADDING-BOTTOM: 2px; PADDING-TOP: 2px; FONT-FAMILY: Arial, Helvetica, sans-serif;
+}
+
+select,option,input {
+ width: 150px;
+ font-family: Verdana, Arial, Serif;
+ font-size: 10pt;
+ color: #000000;
+}
+</STYLE>
+<SCRIPT language=javascript src="../utils/utilfuncs.js"></SCRIPT>
+<SCRIPT language=javascript src="../utils/alloc_logic.js"></SCRIPT>
+<script type="text/javascript">
+
+var G_bRestartServer = true;
+var G_bDisableF5 = false;
+var G_bRestartServerAfterSaveAll = false;
+var G_n60SecCounter = "a few";
+var G_WaitTillReload = 90; // 60 seconds
+var G_nCardIsUpCounter = 30;
+var G_strDoNothingMsg = "<font color='red'>Saving settings. Please do not close HMC window until complete!</font><BR>";
+document.onkeydown = wow;
+function wow()
+{
+
+    if(window.event && window.event.keyCode == 116)
+        { // Capture and remap F5
+            window.event.keyCode = 505;
+        }
+
+    if(window.event && window.event.keyCode == 505)
+        { // New action for F5
+            if ( G_bDisableF5 )
+                { 
+                    //alert( "Please wait " + G_n60SecCounter + " seconds more");
+                    return false;
+                }
+        // Must return false or the browser will refresh anyway
+        }
+}        
+function onPageChange()
+{
+     if ( G_bDisableF5 )
+        return 0;
+     else
+        return 1;
+}
+function init()
+{
+    getGWConfig();
+}
+
+function getGWConfig()
+{
+    parent.frames[0].SendCommand( "GetGWConfig" );
+}
+
+
+function OnData( strMessage )
+{
+	//alert( strMessage );
+    var strCommand = new String( strMessage );
+    var arParam = strCommand.split( " " );
+	var strCmd	= arParam[ 0 ];
+    var packStr;
+	if ( arParam.length > 1 )
+	{
+		packStr = new PacketString( arParam[ 1 ] );
+	}
+
+    switch ( strCmd )
+    {
+        
+		case "Ack":
+		{
+            var strContext	= packStr.getSection( "r" );
+			if ( strContext == null )
+			{
+				return;
+			}
+			
+			if ( strContext == "LoadConfig" )
+			{
+				// New configuration has been loaded
+
+				var strMsg = "Configuration has been loaded successfully";
+				document.getElementById("DIV_Status").innerHTML = strMsg;
+				
+                strMsg = "Configuration has been loaded successfully\n";
+                strMsg += "\n";
+				strMsg += "Resetting cards - system will be restarted in 60 seconds.\n";
+                alert( strMsg );
+
+				document.getElementById("DIV_Status").innerHTML = "";
+
+
+                // Fix #505 - hgs must be restarted after loading configuration to show the new
+                // configuration.
+                G_bRestartServerAfterSaveAll = true;
+                saveSettings();
+			}
+			else
+			if ( strContext == "DelConfig" )
+			{
+				var strMsg = "Configuration has been deleted.";
+				document.getElementById("DIV_Status").innerHTML = strMsg;
+			}
+			
+			break;
+		}
+		
+		case "GWError":
+		{
+            var strContext	= packStr.getSection( "r" );
+			if ( strContext == null )
+			{
+				return;
+			}
+			
+			var strErrMsg;
+			
+			if ( strContext == "LoadConfig" )
+			{
+				strErrMsg = "<font color='red'>";
+				strErrMsg += "An error occured while loading the requested configuration ";
+				strErrMsg += "This is usually caused by invalid configuration data. "; 
+				strErrMsg += "Please load a different configuration file.";
+				strErrMsg += "</font>";
+			}
+			else
+			if ( strContext == "SaveConfig" )
+			{
+				strErrMsg = "<font color='red'>";
+				strErrMsg = "An error occured while saving the configuration";
+				strErrMsg += " Please make sure the configuration name to be saved"; 
+				strErrMsg += " does not already exist and retry.";
+				strErrMsg += "</font>";
+			}
+			
+			document.getElementById("DIV_Status").innerHTML = strErrMsg;
+			break;
+		}
+		
+        case "GWConfigInfo":
+        {
+            G_configInfo.processConfigInfo( packStr );
+            strCards = packStr.getSection( "c" );            
+            G_bRestartServerAfterSaveAll = (strCards.indexOf("LCR") > -1)? true:false;            
+			parent.frames[0].SendCommand( "UpdateConfig /I513" );
+			break;
+        }
+		
+		// Show list of available configurations
+        case "GetConfigurationsReply":
+        {
+            var strConfigs	= packStr.getSection( "g" );
+			var arConfigs	= strConfigs.split( "," );
+            var strSaved	= packStr.getSection( "s" );
+
+			var objSel		= document.getElementById( "selectLoadConfig" );
+			var objDelSel	= document.getElementById( "selectDelConfig" );
+			
+			if ( objSel.options.length != 0 )
+			{
+				// clear selection box
+				objSel.options[0] = null;
+				objSel.options.length = 0;
+				
+				objDelSel.options[0] = null;
+				objDelSel.options.length = 0;
+			}
+			
+			// populate selection box with updated configuration options
+			
+			for (var i=0; i<arConfigs.length; i++)
+			{
+				var strConfig	= arConfigs[ i ];
+				var objOpt		= new Option(strConfig, 'value');
+				var objOptDel	= new Option(strConfig, 'value');				
+				objSel.options[objSel.options.length] = objOpt;
+				objDelSel.options[objDelSel.options.length] = objOptDel;
+			}
+
+			objSel.selectedIndex = 0;
+			objDelSel.selectedIndex = 0;
+			
+			if ( strSaved != null )
+			{
+				// This information was sent as a relpy to a save
+				// configuration command. strSaved conatins the name
+				// of the configuration which was just saved.
+				var strStatus = "Configuration " + strSaved + " successfully saved.";
+				document.getElementById("DIV_Status").innerHTML = strStatus;
+			}
+			
+			break;
+        }
+
+		case "CardIsUp":
+		{
+			var strAddr = packStr.getSection( "A" );
+			//strAddr = strAddr.toUpperCase();
+			var strCardUp = G_configInfo.addr2Name( strAddr );
+	        if (typeof strCardUp == 'undefined')
+			{
+				// It is not listed in the list of cards
+				strCardUp = "Media matrix";
+			}
+			G_strStatus += strCardUp + " is up.<br>";
+			//G_strStatus += strMessage + "<br>";
+            document.getElementById("DIV_Status").innerHTML = G_strDoNothingMsg + G_strStatus;
+			
+            break;
+		}
+		
+        case "SaveOK":
+        {
+            document.getElementById("DIV_Status").innerHTML = G_strStatus;
+			G_strStatus = "";
+            break;
+        }
+        
+        case "SaveError":
+        {
+            document.getElementById("DIV_Status").innerHTML = "Error occured during configuration save. Please check settings and retry.";
+            break;
+        }
+
+        default:
+        {
+            // Send this to TCPServer log file ? internal log file ?
+            //alert( "Got unknown message:" + strMessage + ":" );
+            break;
+        }
+    }
+}
+function update60SecCounter()
+{
+    if ( G_n60SecCounter > 0 )
+    {
+        G_n60SecCounter--;
+        setTimeout("update60SecCounter()",1000);
+        document.getElementById("DIV_Status").innerHTML = document.getElementById("DIV_Status").innerHTML + ".";
+        
+    }
+    else
+    {
+        DisableF5( false );
+        G_n60SecCounter = G_WaitTillReload;
+        document.getElementById("DIV_Status").innerHTML = "Server restarted, please refresh HMC screen and try to reconnect";
+    }
+    
+}
+function lastCardIsUP()
+{
+    document.getElementById("DIV_Status").innerHTML = document.getElementById("DIV_Status").innerHTML + ".";
+    if ( G_nCardIsUpCounter == 0 )    
+    {
+        //20 sec passed after last card is up
+        //restart server or update ui with "done"
+        if (G_bRestartServerAfterSaveAll && G_bRestartServer)
+			{
+              
+				G_bRestartServer = false;
+				restartServer();
+
+			}
+        else
+        {
+            document.getElementById("DIV_Status").innerHTML = "Card resetting finished successfully!";
+            DisableF5( false );
+        }
+    }
+    else
+    {
+        G_nCardIsUpCounter--;
+        setTimeout(lastCardIsUP,1000);
+    }
+    
+}
+
+function DisableF5( bDisable )
+{
+    if ( bDisable )
+    {
+        //alert( "disable f5" );
+        G_bDisableF5 = true;
+    }
+    else
+    {
+        //alert( "enable f5" );
+        G_bDisableF5 = false;
+    }
+}
+
+function restartServer()
+{
+    
+    parent.frames[0].SendCommand( "RestartServer" );
+    G_n60SecCounter = G_WaitTillReload;
+	document.getElementById("DIV_Status").innerHTML = G_strDoNothingMsg + "Restarting server please wait.";
+    setTimeout(update60SecCounter,1000);
+	document.getElementById( "_SaveSettings" ).innerHTML = "";
+}
+function saveSettings()
+{
+    G_nCardIsUpCounter = 30;
+    DisableF5( true );
+    setTimeout(lastCardIsUP,1000); //start 20 sec counter from last card is up
+    parent.frames[0].SendCommand( "SaveSettings" );
+    document.getElementById("DIV_Status").innerHTML = G_strDoNothingMsg + "Saving all settings this might take a few minutes...";    
+	document.getElementById( "_SaveSettings" ).innerHTML = "";
+}
+
+function saveConfig()
+{
+	var strStatus = "Saving configuration - please wait...";
+	document.getElementById("DIV_Status").innerHTML = strStatus;
+	var strConfigName = document.getElementById( "saveName" ).value;
+	var strCommand = "UpdateConfig /I542/G" + strConfigName;
+    parent.frames[0].SendCommand( strCommand );
+}
+
+function delConfig()
+{
+	var objSel = document.getElementById( "selectDelConfig" );
+	if ( objSel.options.length == 0 )
+	{
+		// Nothing to load
+		return;
+	}
+
+	var strPrompt = "Warning: This will permanently delete the saved configuration.\n";
+	strPrompt += "Are you sure you wish to continue ?";
+	if ( !confirm( strPrompt ) )
+	{
+		return;
+	}
+
+	var strLoadName = objSel.options[objSel.selectedIndex].text;
+	var strCommand = "DeleteConfig /I477/G" + strLoadName;
+    parent.frames[0].SendCommand( strCommand );
+	
+
+	history.go();
+}
+
+function loadConfig()
+{
+	var objSel = document.getElementById( "selectLoadConfig" );
+	if ( objSel.options.length == 0 )
+	{
+		// Nothing to load
+		return;
+	}
+
+	var strPrompt = "Warning: Loading a configuration will permanently delete the current configuration.\n";
+	strPrompt += "All existing media and application assignments and resources will be lost.\n";
+	strPrompt += "Are you sure you wish to continue ?";
+	if ( !confirm( strPrompt ) )
+	{
+		return;
+	}
+
+	var strLoadName = objSel.options[objSel.selectedIndex].text;
+	var strCommand = "LoadConfig /I476/G" + strLoadName;
+    parent.frames[0].SendCommand( strCommand );
+	var strMsg = "Loading configuration. Please wait a few minutes while the selected configuration is restored...";
+	document.getElementById("DIV_Status").innerHTML = strMsg;
+}
+
+var G_strStatus = G_strDoNothingMsg + "All settings saved successfully. Cards reseting...";
+
+function clickIt( obj, strFile, bPressed, nDebug )
+{
+    obj.bPressed = bPressed;
+    var str = 'document.all.' + obj.name + '.src = "' + strFile + '"';
+    //if (nDebug==1) alert(str);
+    eval( str );
+}
+
+// Limit the user input to safe characters that can roundtrip through hgs
+// message format and used for file name of all platrofms we support.
+// We also limit whitespace, since it does not roundtrip in the curent ui.
+// +----------------------------------------+
+// | Limit       | Chars                    |
+// +----------------------------------------+
+// | Windows     |  < > : " ' / \ | ? * # % |
+// | Linux       | /                        |
+// | HGS message | / ,                      |
+// +-------------+--------------------------+
+// Note: windows also forbid control characters, (\x00-\x31) but we don't 
+// handle them yet since it is hard to enter them.
+// Reference: http://msdn.microsoft.com/en-us/library/aa365247(VS.85).aspx
+
+function sanitize(e) {
+    e.value = e.value.replace(/[<>:"\'\/\\|?*#%,]+|\s+/g, '-');
+}
+
+</script>
+<BODY ondragstart="return false;" bgcolor="white" onLoad="init();">
+<font size=4 face="Arial">Save All Settings</font>
+<hr>
+<font face="Arial" size=-1>
+<table>
+<tr bgcolor="#e0e0e0">
+	<td><b>Store settings on cards</b><br>Permanently save all the configuration settings 
+	    in the HyperGateway. This process might take up to 60 seconds.</td>
+	<td id="_SaveSettings">
+		<img name="bnext" src="./Up-SaveAllSettings.jpg"
+		onmousedown="clickIt( this, './Down-SaveAllSettings.jpg', 1 );"
+		onmouseup="if (this.bPressed==1) {clickIt( this, './Up-SaveAllSettings.jpg', 0 ); saveSettings(); }"
+		onMouseOver="style.cursor='hand'" 
+		onmouseout="clickIt( this, './Up-SaveAllSettings.jpg', 0 );">
+	</td>
+</tr>
+<!--
+<tr bgcolor="#f0f0f0">
+    <td><b>Save current configuration</b><br>
+        Make a backup of the current configuration. This includes
+        media link settings and application resource assignments.<br>
+        Note: configuration name may not include blanks or one of these characters: "&lt;&gt;:&quot;'/\|?*#%".
+	</td>
+	<td>
+        <input type="TEXT" size="30" id="saveName" 
+            onkeyup="sanitize(this)"
+            onchange="sanitize(this)"></input><br>
+		<img name="bnext1" src="./Up-SaveConfig.jpg"
+		onmousedown="clickIt( this, './Down-SaveConfig.jpg', 1 );"
+		onmouseup="if (this.bPressed==1) {clickIt( this, './Up-SaveConfig.jpg', 0 ); saveConfig(); }"
+		onMouseOver="style.cursor='hand'" 
+		onmouseout="clickIt( this, './Up-SaveConfig.jpg', 0 );">
+	</td>
+</tr>
+<tr bgcolor="#e0e0e0">
+	<td><b>Restore saved configuration</b><br>Restore a previously saved configuration of media links and application resource assignments
+	</td>
+	<td>
+		<select id="selectLoadConfig"></select><br>
+		<img name="bnext2" src="./Up-LoadConfig.jpg"
+		onmousedown="clickIt( this, './Down-LoadConfig.jpg', 1 );"
+		onmouseup="if (this.bPressed==1) {clickIt( this, './Up-LoadConfig.jpg', 0 ); loadConfig(); }"
+		onMouseOver="style.cursor='hand'" 
+		onmouseout="clickIt( this, './Up-LoadConfig.jpg', 0 );">
+	</td>
+</tr>
+<tr bgcolor="#f0f0f0">
+	<td><b>Delete saved configuration</b><br>Delete a saved configuration from the existing configurations
+	list.
+	</td>
+	<td>
+		<select id="selectDelConfig"></select><br>
+		<img name="bnext3" src="./Up-DelConfig.jpg"
+		onmousedown="clickIt( this, './Down-DelConfig.jpg', 1 );"
+		onmouseup="if (this.bPressed==1) {clickIt( this, './Up-DelConfig.jpg', 0 ); delConfig(); }"
+		onMouseOver="style.cursor='hand'" 
+		onmouseout="clickIt( this, './Up-DelConfig.jpg', 0 );">
+	</td>
+</tr>
+-->
+</table>
+
+<br>
+<u><b>Status</b></u>
+<div id="DIV_Status"></div>
+</BODY>
+</HTML>

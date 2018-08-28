@@ -1,0 +1,1391 @@
+<HTML>
+
+<link type="text/css" href="../default.css" rel="stylesheet">
+
+<STYLE type="text/css">
+
+.skin0 {
+
+position:absolute;
+
+text-align:left;
+
+width:200px;
+
+border:2px solid black;
+
+background-color:menu;
+
+font-family:Verdana;
+
+line-height:20px;
+
+cursor:default;
+
+visibility:hidden;
+
+}
+
+
+
+.skin1 {
+
+cursor:default;
+
+font:menutext;
+
+position:absolute;
+
+text-align:left;
+
+font-family: Arial, Helvetica, sans-serif;
+
+font-size: 10pt;
+
+width:120px;
+
+background-color:menu;
+
+border:1 solid buttonface;
+
+visibility:hidden;
+
+border:2 outset buttonhighlight;
+
+}
+
+
+
+.menuitems {
+
+padding-left:15px;
+
+padding-right:10px;
+
+}
+
+
+
+tr.disabled td {
+
+   color: gray; 
+
+}
+
+</STYLE>
+
+<SCRIPT language=javascript src="../utils/utilfuncs.js"></SCRIPT>
+
+<SCRIPT language=javascript src="../utils/alloc_logic.js"></SCRIPT>
+
+<SCRIPT>
+
+var G_nTotal = 72;  // UF: read this from initial data
+
+var G_oStatus = new Array();
+
+var G_VoIPChannelStatusMap = new Array();
+
+var G_arMediaLinks = new Array();
+
+
+
+var menuskin = "skin1"; // skin0, or skin1
+
+var display_url = 0; // Show URLs in status bar?
+
+var g_nLastX = 0;
+
+var g_nLastY = 0;
+
+var g_nLastSelChannel = 0;
+
+var g_objSelRow = null;
+
+
+
+function showmenuie5()
+
+{
+
+    var obj = document.elementFromPoint( event.clientX, event.clientY );
+
+    if (typeof (obj.channel) == 'undefined' )
+
+    {
+
+        return false;
+
+    }
+
+
+
+    if ( g_objSelRow != null )
+
+    {
+
+        g_objSelRow.style.backgroundColor = ""; // Inherit parent background
+
+    }
+
+    
+
+    g_objSelRow = document.getElementById( "c" + obj.channel );
+
+    
+
+    g_nLastX = event.clientX;
+
+    g_nLastY = event.clientY;
+
+
+
+    document.getElementById( "c" + obj.channel ).style.backgroundColor="#FFDB75";
+
+    g_nLastSelChannel = obj.channel;
+
+
+
+    var rightedge = document.body.clientWidth-event.clientX;
+
+    var bottomedge = document.body.clientHeight-event.clientY;
+
+    if (rightedge < ie5menu.offsetWidth)
+
+    {
+
+        ie5menu.style.left = document.body.scrollLeft + event.clientX - ie5menu.offsetWidth;
+
+    }
+
+    else
+
+    {
+
+        ie5menu.style.left = document.body.scrollLeft + event.clientX;
+
+    }
+
+    
+
+    if (bottomedge < ie5menu.offsetHeight)
+
+    {
+
+        ie5menu.style.top = document.body.scrollTop + event.clientY - ie5menu.offsetHeight;
+
+    }
+
+    else
+
+    {
+
+        ie5menu.style.top = document.body.scrollTop + event.clientY;
+
+    }
+
+    ie5menu.style.visibility = "visible";
+
+    return false;
+
+}
+
+
+
+function hidemenuie5()
+
+{
+
+    ie5menu.style.visibility = "hidden";
+
+    var obj = document.elementFromPoint( g_nLastX, g_nLastY );
+
+    if (typeof (obj.channel) != 'undefined' )
+
+    {
+
+        document.getElementById( "c" + obj.channel ).style.backgroundColor = ""; // Inherit parent background
+
+    }
+
+}
+
+
+
+function highlightie5()
+
+{
+
+    if (event.srcElement.className == "menuitems")
+
+    {
+
+        event.srcElement.style.backgroundColor = "highlight";
+
+        event.srcElement.style.color = "white";
+
+        if (display_url)
+
+        {
+
+            window.status = event.srcElement.url;
+
+        }
+
+    }
+
+}
+
+
+
+function lowlightie5()
+
+{
+
+    if (event.srcElement.className == "menuitems")
+
+    {
+
+        event.srcElement.style.backgroundColor = "";
+
+        event.srcElement.style.color = "black";
+
+        window.status = "";
+
+    }
+
+}
+
+
+
+function jumptoie5()
+
+{
+
+    if (event.srcElement.className == "menuitems")
+
+    {
+
+        if (event.srcElement.getAttribute("target") != null)
+
+        {
+
+            window.open(event.srcElement.url, event.srcElement.getAttribute("target"));
+
+        }
+
+        else
+
+        {
+
+            window.location = event.srcElement.url;
+
+        }
+
+    }
+
+}
+
+
+
+var g_strStatistics = "";
+
+
+
+function init()
+
+{
+
+    getGWConfig();
+
+}
+
+function doTable()
+
+{
+
+	var strHTML = "<table class='headerScollable' border='0' cellspacing='0' ><thead><tr>";
+
+	strHTML += "<td align='left' >Line</td><td align='left' >Direction/Type</td>";
+
+	strHTML += "<td align='left' >State</td><td width='100'>To</td><td>Remote IP</td>";
+
+	strHTML += "<td>ASR</td><td>ACD</td></tr></thead><tbody class='scrollContent'>";
+
+
+
+    for (var i=0; i<G_nTotal; i++)
+
+    {
+
+        strHTML += "<tr id='c" + i + "' class='disabled'>";
+
+        strHTML += "<td align='right'><b> " + (i+1) +  "</b></td>"; // channel
+
+        strHTML += "<td channel='" + i + "' id='Dir" + i + "'>-</td>";
+
+        strHTML += "<td channel='" + i + "' id='State" + i + "'>-</td>";
+
+        strHTML += "<td channel='" + i + "' id='To" + i + "'>-</td>";
+
+        strHTML += "<td channel='" + i + "' id='RemoteIP" + i + "'>-</td>";
+
+        strHTML += "<td channel='" + i + "' id='ASR" + i + "'>-</td>";
+
+        strHTML += "<td channel='" + i + "' id='ACD" + i + "'>-</td>";
+
+        strHTML += "</tr>";
+
+    }
+
+
+
+	strHTML += "</tbody></table>";
+
+	document.getElementById("id_DIVStatus").innerHTML = strHTML;
+
+	
+
+    for (var i=0; i < G_nTotal; i++)
+
+    {
+
+        var rowID       = 'c' + i;
+
+        var strDir 		= "Dir" + i;
+
+        var strStatus 	= "State" + i;
+
+        var strFrom 	= "From" + i;
+
+        var strTo		= "To" + i;
+
+        var strRemoteIP = "RemoteIP" + i;
+
+        var strASR		= "ASR" + i;
+
+        var strACD		= "ACD" + i;
+
+
+
+        G_oStatus[ rowID ]          = document.getElementById(rowID);
+
+        G_oStatus[ strDir ]			= document.getElementById(strDir);
+
+        G_oStatus[ strStatus ]		= document.getElementById(strStatus);
+
+        G_oStatus[ strTo ]			= document.getElementById(strTo);
+
+        G_oStatus[ strRemoteIP ]	= document.getElementById(strRemoteIP);
+
+        G_oStatus[ strASR ]			= document.getElementById(strASR);
+
+        G_oStatus[ strACD ]			= document.getElementById(strACD);
+
+    }
+
+
+
+    
+
+}
+
+
+
+function OnData( strMessage )
+
+{
+
+    var arParam = strMessage.split( " " );
+
+    
+
+    var strCommand  = arParam[ 0 ];
+
+    var strParam    = strMessage.substring( strCommand.length );
+
+    
+
+    var packStr = new PacketString( strParam );
+
+    
+
+    switch ( strCommand )
+
+    {
+
+    
+
+        case "MGWResStatusReply":
+
+        {
+
+            //alert( strMessage );
+
+            
+
+            var strStatus = packStr.getSection( "g" );
+
+            if ( strStatus == null )
+
+            {
+
+                strStatus = "";
+
+            }
+
+
+
+            var arStatus  = strStatus.split( "," );
+
+            var strResult = "";
+
+            var nConnected	= 0;
+
+            var nDialing	= 0;
+
+            var nAvgACD		= 0;
+
+            var nAvgASR		= 0;
+
+            var	nASRChannels	= 0;
+
+            var	nACDChannels	= 0;
+
+
+
+            var strStatistics = packStr.getSection( "s" );
+
+            if ( strStatistics == null )
+
+            {
+
+                strStatistics = g_strStatistics;
+
+            }
+
+            else
+
+            {
+
+                g_strStatistics = strStatistics;
+
+            }
+
+
+
+            var arStatistics  = strStatistics.split( "," );
+
+     
+
+            //////////////////////////////////////////////////////////////
+
+            // Get the list of channels that are blocked.
+
+            var arBlockedStatus = new Array();
+
+            
+
+            var strBlockedList      = packStr.getSection( "B" );
+
+            if ( strBlockedList != null )
+
+            {
+
+                var arBlocked = strBlockedList.split( "," );
+
+                for (var i=0; i<arBlocked.length; i++)
+
+                {
+
+                    var nBlockedChannel = parseInt( arBlocked[ i ] );
+
+                    arBlockedStatus[ nBlockedChannel ] = "B";
+
+                }
+
+            }
+
+            // Fast blocked too... (blocked from the monitor UI)            
+
+            var strFastBlockedList  = packStr.getSection( "b" );
+
+            if ( strFastBlockedList != null )
+
+            {
+
+                var arFastBlocked = strFastBlockedList.split( "," );
+
+                for (var i=0; i<arFastBlocked.length; i++)
+
+                {
+
+                    var nBlockedChannel = parseInt( arFastBlocked[ i ] );
+
+                    arBlockedStatus[ nBlockedChannel ] = "b";
+
+                }
+
+            }
+
+            // ------------- AsrAcdMin ----------------------------
+            asr_min = 0;
+            acd_min = 0;
+            var strAsrAcdMinList  = packStr.getSection( "L" );
+
+            if ( strAsrAcdMinList != null ){
+                var arAsrAcdMin = strAsrAcdMinList.split( "," );
+                asr_min = arAsrAcdMin[0];
+                acd_min = arAsrAcdMin[1];
+            }
+            //////////////////////////////////////////////////////////////
+
+
+
+            for (var i=0; i<arStatus.length; i++)
+
+            {
+
+                var strDirection;
+
+                var strChanStat;
+
+                var strFrom;
+
+                var strTo;
+
+                var strIP;
+
+
+
+                var strASR = "";
+
+                var strACD = "";
+
+
+
+                var rowID       = 'c' + i;
+
+                var strDirID    = "Dir" + i;
+
+                var strStatusID = "State" + i;
+
+                var strFromID   = "From" + i;
+
+                var strToID 		= "To" + i;
+
+                var strIPID	    	= "RemoteIP" + i;
+
+
+
+                var strASR_ID   = "ASR" + i;
+
+                var strACD_ID   = "ACD" + i;
+
+
+
+                if ( g_strStatistics != "" )
+
+                {
+
+                    var arStatsInfo = arStatistics[ i ].split( "|" );
+
+                    strASR = arStatsInfo[ 0 ];
+
+                    strACD = arStatsInfo[ 1 ];
+
+                }
+
+                else
+
+                {
+
+                    strASR = "n";
+
+                    strACD = "n";
+
+                }
+
+                
+
+                if ( arStatus[ i ] == "f" )
+
+                {
+
+                    strChanStat		= "<font color='red'>No Signal</font>";
+
+                    strDirection    = "-";
+
+                    strFrom			= "-";
+
+                    strTo			= "-";
+
+                    strIP			= "-";
+
+                }
+
+                else
+
+                if ( arStatus[ i ] != "i" && arStatus[ i ] != "u" )
+
+                {
+
+                    var arInfo = arStatus[ i ].split( "|" );
+
+                    if ( arInfo[ 0 ] == "1" )
+
+                    {
+
+                        strDirection = "Network";
+
+                    }
+
+                    else
+
+                    {
+
+                        strDirection = "PBX";
+
+                    }
+
+                    
+
+                    if ( arInfo[ 1 ] == "0" )
+
+                    {
+
+                        strChanStat = "Disconnected";
+
+                    }
+
+                    else
+
+                    if ( arInfo[ 1 ] == "1" )
+
+                    {
+
+                        strChanStat = "Dialing";
+
+                        nDialing++;
+
+                    }
+
+                    else
+
+                    if ( arInfo[ 1 ] == "2" )
+
+                    {
+
+                        strChanStat = "Connected";
+
+                        nConnected++;
+
+                    }
+
+                    
+
+                    strFrom	= arInfo[ 2 ];
+
+                    strTo	= arInfo[ 3 ];
+
+                    strIP	= arInfo[ 4 ];
+
+                    
+
+                    var strProtocol = "H.323";
+
+                    if ( arInfo.length == 6 )
+
+                    {
+
+                        // Server also sends VoIP protocol information
+
+                        var strProtocol = arInfo[ 5 ];
+
+                        switch ( strProtocol )
+
+                        {
+
+                            case "s":
+
+                                strProtocol = "SIP";
+
+                                break;
+
+                                
+
+                            case "h":
+
+                                strProtocol = "H.323";
+
+                                break;
+
+                        }
+
+                    }
+
+                    strDirection = strDirection + "/" + strProtocol;
+
+                }
+
+                else
+
+                {
+
+                    strDirection	= "-";
+
+                    if ( arStatus[ i ] == "i" )
+
+                    {
+
+                        strChanStat		= "Idle";
+
+                    }
+
+                    else
+
+                    {
+
+                        strChanStat		= "Unmapped";
+
+                    }
+
+                    strFrom	= "-";
+
+                    strTo = "-";
+
+                    strIP = "-";
+
+                }
+
+                
+
+                if ( arBlockedStatus[ i ] == "b" )
+
+                {
+
+                    strChanStat     = "Fast Block";
+
+                }
+
+                else
+
+                if ( arBlockedStatus[ i ] == "B" )
+
+                {
+
+                    strChanStat      = "Blocked";
+
+                }
+
+
+
+                G_oStatus[ rowID ].className = isActive(strChanStat) ? '' : 'disabled';
+
+                G_oStatus[ strDirID ].innerHTML		= strDirection;
+
+                G_oStatus[ strStatusID ].innerHTML	= strChanStat;
+
+                G_oStatus[ strToID ].innerHTML		= strTo;
+
+                G_oStatus[ strIPID ].innerHTML		= strIP;
+
+
+
+                // Display statistics
+
+
+
+                if (strASR === "n")
+
+                    G_oStatus[strASR_ID].innerHTML = "-";
+
+                else{
+                    if(parseInt(asr_min) > 0 && parseInt(strASR) <= parseInt(asr_min) ){
+						G_oStatus[strASR_ID].innerHTML =  "<font color='RED'><b>" + strASR + "%" + "</b></font>";
+					}else if(parseInt(asr_min) > 0 && parseInt(strASR) <= (parseInt(asr_min)+10) ){
+						G_oStatus[strASR_ID].innerHTML =  "<font color='ORANGE'><b>" + strASR + "%" + "</b></font>";
+					}else{
+						G_oStatus[strASR_ID].innerHTML =   strASR + "%" ;
+					}
+				}
+
+
+
+                if (strACD === "n")
+
+                    G_oStatus[strACD_ID].innerHTML = "-";
+
+                else{
+                    if(parseInt(acd_min) > 0 && parseInt(strACD) <= parseInt(acd_min) ){
+						G_oStatus[strACD_ID].innerHTML =  "<font color='RED'><b>" + strACD + "</b></font>";
+					}else if(parseInt(acd_min)> 0 && parseInt(strACD) <= (parseInt(acd_min)*1.1) ){
+						G_oStatus[strACD_ID].innerHTML =  "<font color='ORANGE'><b>" + strACD  + "</b></font>";
+					}else{
+						G_oStatus[strACD_ID].innerHTML =   strACD  ;
+					}
+                }
+
+
+                // Collect statistics
+
+
+
+                if (isActive(strChanStat))
+
+                {
+
+                    if (strASR != "0" && strASR != "n") {
+
+                        nAvgASR += parseInt(strASR);
+
+                        nASRChannels++;
+
+                    }
+
+                    if (strACD != "0" && strACD != "n") {
+
+                        nAvgACD += parseInt(strACD);
+
+                        nACDChannels++;
+
+                    }
+
+                }
+
+
+
+                //alert (strASR + " ... " +nACDChannels);
+
+            }
+
+
+
+            document.getElementById( "id_Dialing" ).innerHTML = nDialing;
+
+            document.getElementById( "id_Connected" ).innerHTML = nConnected;
+
+            if ( nASRChannels > 0 )
+
+            {
+
+                document.getElementById( "id_ASR_Avergage" ).innerHTML = (nAvgASR / nASRChannels).toFixed(1) + "%";
+
+            }
+
+            else
+
+            {
+
+                document.getElementById( "id_ASR_Avergage" ).innerHTML = "0%";
+
+            }
+
+                
+
+            if ( nACDChannels > 0 )
+
+            {
+
+                document.getElementById( "id_ACD_Avergage" ).innerHTML = (nAvgACD / nACDChannels).toFixed(1);
+
+            }
+
+            else
+
+            {
+
+                document.getElementById( "id_ACD_Avergage" ).innerHTML = "0%";
+
+            }
+
+            
+
+            var strRegistered = packStr.getSection( "R" );     
+
+            regDiv = document.getElementById( "register_stat");
+
+            if ( strRegistered != null)
+
+            {
+
+				var color = "green";
+
+				if ( strRegistered == "Disconnected" )
+
+					color = "red";
+
+				var stat = "<font color='" + color + "'>";
+
+				stat    +=  strRegistered + "<font>";
+
+                regDiv.style.display = "block"; 
+
+                document.getElementById( "id_Registered").innerHTML = stat;                
+
+            }
+
+            else
+
+            {   
+
+                // signalgw does not support this feature - user should not see this at all...
+
+                regDiv.style.display = "none"; 
+
+            }
+
+            break;
+
+        }
+
+
+
+        case "GWError":
+
+        {
+
+//            alert( "Got error message:" + strMessage );
+
+            break;
+
+        }
+
+
+
+        case "GWConfigInfo":
+
+        {
+
+			G_arMediaLinks = getMediaLinks( packStr.getSection( "m" ), "MG=" );
+
+			//alert( G_arMediaLinks + " " + G_arMediaLinks.length );
+
+          if ( G_arMediaLinks.length > 0 )
+
+            G_nTotal = G_arMediaLinks.length;
+
+			
+
+			 
+
+            var objSelect = G_configInfo.getSelectCardHTML( packStr, "MG.0", "Select media card", "onSelectCard" );
+
+            var strHTML = objSelect.m_strHTML;
+
+            var strSelCard = objSelect.m_strSelCard;
+
+            var strSelCardType = objSelect.m_strSelCardType;
+
+            
+
+            if ( strSelCard != null )
+
+            {
+
+                onSelectCard( strSelCard, strSelCardType );
+
+                doTable();
+
+            }
+
+            else
+
+            {
+
+                document.getElementById("selectcard").innerHTML = "No media card on this slot";
+
+                document.getElementById("id_DIVStatus").style.visibility = "hidden";
+
+                document.getElementById("tbStatus").style.visibility = "hidden";
+
+                document.getElementById("tbRegistration").style.visibility = "hidden";
+
+            }
+
+            break;
+
+        }
+
+
+
+        default:
+
+        {
+
+            //alert( "Got unknown message:" + strMessage );
+
+            break;
+
+        }
+
+    }
+
+}
+
+
+
+function isActive(s) {
+
+    return s != "Unmapped" && s != "Fast Block" && s != "Block";
+
+}
+
+
+
+function getMediaLinks( strCards, strCardType )
+
+{  
+
+    var str = strCards.substring(strCards.indexOf(strCardType));    
+
+    if ( str.indexOf("|") > -1)
+
+        str = str.substring(0,str.indexOf("|"));
+
+    str= str.substring( str.indexOf("=") + 1 );
+
+    return str.split(",");    
+
+}
+
+function getGWConfig()
+
+{
+
+    parent.frames[0].SendCommand( "GetGWConfig" );
+
+}
+
+
+
+function onSelectCard( strCard, strCardType )
+
+{
+
+    getInfo( strCard );
+
+}
+
+
+
+var G_nMGWStatusTimerID;
+
+
+
+var G_nStatsCounter = 0;
+
+
+
+function getInfo( strAddress )
+
+{
+
+    clearTimeout(G_nMGWStatusTimerID);
+
+	var strCommand = "MGWResStatus /I124/AMG";
+
+	if ( (G_nStatsCounter % 8) == 0 )
+
+	{
+
+		strCommand += "/S";
+
+	}
+
+	G_nStatsCounter++;
+
+    parent.frames[0].SendCommand( strCommand );
+
+    var strFunc = "getInfo('" + strAddress + "')";
+
+    G_nMGWStatusTimerID = setTimeout(strFunc,2000);
+
+}
+
+
+
+function clearCall()
+
+{
+
+    var nChannel = parseInt( g_nLastSelChannel ) + 1;
+
+	if  ( !confirm( "Are you sure you want to disconnect active call on channel " + nChannel + " ?" ) )
+
+	{
+
+		return;
+
+	}
+
+    
+
+    var strCmd = "VoipChannelCmd /I" + g_nLastSelChannel + "/AMG/cClearCall/r" + g_nLastSelChannel;  
+
+    parent.frames[0].SendCommand( strCmd );
+
+}
+
+function sendDTMF()
+
+{
+
+	//check if voip channel allocated
+
+	if ( G_arMediaLinks[ g_nLastSelChannel ] == "" )
+
+	{
+
+		closeDTMF();
+
+		//alert ("No SIM allocated!");
+
+		return;
+
+	}
+
+	var nChannel = parseInt(g_nLastSelChannel)+1;
+
+	var strHTML = "<table border='0'><tr><td colspan=2 class='BlueAlert'>";
+
+	strHTML += "Access current channel dial " +nChannel+ "*" + "</td></tr>";
+
+	strHTML += "<tr><td><input type='text' id='txtDTMF' class='BlueAlert' onkeyup='return SendDTMFCheck()'></input></td><td><input class='button' type='button' id='btnDTMF' value='Send' onclick='sendDTMFTo();'></input></td></tr>";
+
+	//strHTML += "<tr><td><input type='text' id='txtTest' class='BlueAlert'></input></td></tr>";
+
+	strHTML += "<tr><td colspan=2 align='right'><a class='link' href='javascript:closeDTMF()'>close</a></td></tr>";
+
+
+
+	strHTML += "</table>";
+
+	document.getElementById("dtmf").style.visibility = "visible";
+
+	document.getElementById("dtmf").innerHTML = strHTML;
+
+return;
+
+    
+
+}
+
+
+
+function SendDTMFCheck()
+
+{
+
+
+
+	
+
+	if (window.event && window.event.keyCode == 13)
+
+		sendDTMFTo();
+
+	else
+
+	{
+
+    /*
+
+		//document.getElementById("txtTest").value += "," + window.event.keyCode;
+
+		if ( ( window.event.keyCode < 47 || window.event.keyCode>57) &&  ( window.event.keyCode < 96 || window.event.keyCode>106) && window.event.keyCode!=16)
+
+		{
+
+			var str = document.getElementById("txtDTMF").value;			
+
+			document.getElementById("txtDTMF").value = str.substring(0, str.length-1);
+
+		}
+
+     */   
+
+		return true;
+
+	}
+
+}
+
+function sendDTMFTo()
+
+{
+
+		var arAdd2Module =  G_arMediaLinks[ g_nLastSelChannel ].split(".");
+
+		var strDigits = document.getElementById("txtDTMF").value;
+
+		
+
+		if ( strDigits != "" )
+
+		{
+
+			var strCommand = "SendGenericPacket 95:/A" + arAdd2Module[0] + "/r" +  arAdd2Module[1] + "/G" + strDigits;
+
+			document.getElementById("txtDTMF").value = "";
+
+			//alert ( strCommand );
+
+			parent.frames[0].SendCommand( strCommand );
+
+		}
+
+	
+
+}
+
+function closeDTMF()
+
+{
+
+	document.getElementById("dtmf").innerHTML = "";
+
+	document.getElementById("dtmf").style.visibility = "hidden";
+
+
+
+}
+
+function fastBlock( nBlock )
+
+{
+
+    G_nStatsCounter = 0;
+
+    var strCmd = "VoipChannelCmd /I" + g_nLastSelChannel + "/AMG/cFastBlock/b" + nBlock + "/r" + g_nLastSelChannel;  
+
+    parent.frames[0].SendCommand( strCmd );
+
+}
+
+
+
+function resetASRACD( nASR, nACD )
+
+{
+
+    G_nStatsCounter = 0;
+
+    var strCmd = "VoipChannelCmd /I" + g_nLastSelChannel + "/AMG/cResetASRACD/R" + nASR + "/D" + nACD + "/r" + g_nLastSelChannel;  
+
+    parent.frames[0].SendCommand( strCmd );
+
+}
+
+</SCRIPT>
+
+
+
+<BODY onselectstart="return true;" onLoad="setTimeout('init()',100);" bgcolor="white">
+
+<font size=4 face="Arial">VoIP Card Status</font>
+
+<hr>
+
+<!--<font face=Arial size=2>
+
+<div id="selectcard"></div>
+
+<div id="update_settings">No card selected</div>
+
+<br>
+
+-->
+
+</font>
+
+<div id="ie5menu" class="skin0" onMouseover="highlightie5()" onMouseout="lowlightie5()" onClick="jumptoie5();">
+
+<div class="menuitems" url="javascript:fastBlock( 1 );">Fast Block</div>
+
+<div class="menuitems" url="javascript:fastBlock( 0 );">Fast Unblock</div>
+
+<hr>
+
+<div class="menuitems" url="javascript:sendDTMF();">Send DTMF</div>
+
+<hr>
+
+<div class="menuitems" url="javascript:resetASRACD( 1, 0 );">Reset ASR</div>
+
+<div class="menuitems" url="javascript:resetASRACD( 0, 1 );">Reset ACD</div>
+
+<div class="menuitems" url="javascript:resetASRACD( 1, 1 );">Reset Both</div>
+
+<hr>
+
+<div class="menuitems" url="javascript:clearCall();">Clear Call</div>
+
+</div>
+
+<script language="JavaScript1.2">
+
+if (document.all && window.print) {
+
+ie5menu.className = menuskin;
+
+document.oncontextmenu = showmenuie5;
+
+document.body.onclick = hidemenuie5;
+
+}
+
+</script>
+
+<font face=Arial size=2>
+
+<div id="dtmf"></div>
+
+<div id="selectcard"></div>
+
+
+
+<div class="tableContainer" id="id_DIVStatus" style="border-style: solid; border-width: thin; width: 590px; height: 570px;">
+
+</div>
+
+
+
+<table width="590" id="tbStatus">
+
+    <tr>
+
+        <td align="right">Lines connected:</td><td align="left" id="id_Connected">0</td>
+
+        <td align="right">Lines dialing:</td><td align="left" id="id_Dialing">0</td>
+
+        <td align="right">Global ASR:</td><td align="left" id="id_ASR_Avergage">0%</td>
+
+        <td align="right">Global ACD:</td><td align="left" id="id_ACD_Avergage">0</td>
+
+    </tr>
+
+</table>
+
+
+
+<div id="register_stat">
+
+    <table width="590" id="tbRegistration">
+
+        <tr>
+
+            <td align="left" width="10%">Registration Status:</td><td align="left" id="id_Registered"></td>
+
+        </tr>
+
+    </table>
+
+</div>
+
+
+
+</BODY>
+
+</HTML>
+

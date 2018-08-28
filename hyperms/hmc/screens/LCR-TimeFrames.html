@@ -1,0 +1,380 @@
+<html >
+
+<head>
+<link type="text/css" href="../default.css" rel="stylesheet">
+
+<title>Time Frames</title>
+</head>
+
+<body onload="StartConfigInitializationProcess()">
+<script src="../js/prototype.js" type="text/javascript"></script>
+<script src="../js/prototype.addon.js" type="text/javascript"></script>
+	
+<script src="../js/LCRGuiUtils.js" type="text/javascript"></script>
+<script src="../js/utilfuncs.js" type="text/javascript"></script>
+<script src="../js/alloc_logic.js" type="text/javascript"></script>
+<script src="../js/ConfigInfo.js" type="text/javascript"></script>
+
+<script type="text/javascript">
+
+var activeCellColor = "#D2E4FC";
+var inactiveCellColor = "silver";
+var disableFeatureCommand = "SendGenericPacket 34:/x1,0/ALCR/I934/r0/G,,,";
+	
+	
+var numOfTF = 0;
+var allTimeFrames;
+var LocalTimeFrames; 
+
+
+// LCR Parameters - channels, groups, rules, filters and time periods.
+var strCmdOpcode30 = "SendGenericPacket 30:/x1,0/ALCR/I830/Q";
+
+// Rules time periods.
+var strCmdOpcode34 = "SendGenericPacket 34:/x1,0/ALCR/I834/Q";
+
+function OnData(strMessage)
+{
+    var strCommand = new String( strMessage );
+    var arParam = strCommand.split( " " );
+
+	if ( arParam.length < 1 ){return;}
+	
+	var packStr = new PacketString( arParam[ 1 ] );
+	var strID = packStr.getSection( "I" );
+	var response;
+
+	if (arParam[0] == "GWConfigInfo"){
+    
+       	if ( packStr.getSection( "c" ).indexOf("LCR") == -1 )
+				{
+					// no LCR                
+                  
+                    $('filterSaveButton').disabled = true;
+                    $('addTfBtn').disabled = true;
+                    $('remTfBtn').disabled = true;
+                    $('remTfBtn1').disabled = true;
+					document.getElementById("divGui").innerHTML = "No LCR was found.";
+					return;
+				
+				}
+				
+		GLBCardConfig = new LCRConfig(arParam[1]);
+		
+		PollLcr("30");
+		
+		return;
+	}	
+
+	if (strID == "830"){
+
+
+		sectionG = packStr.getSection("g");
+		if (sectionG != null){
+			GLBCardConfig.InitResources(packStr.getSection("g").split(","));}
+		else{
+			GLBCardConfig.InitResources(null);
+		}
+		
+		PollLcr("34");
+		return;
+	}
+	if (strID == "834"){
+		
+		sectionG = packStr.getSection("g");
+		if(sectionG != null){
+			GLBCardConfig.InitTimeFrames(packStr.getSection("g").split(","));
+		}
+
+		SendCommand(PCAddressCommand); // Generates cardInfo answer
+
+		
+		return;
+	}
+	
+	if (arParam[0] == "CardInfo" && strID == "836"){
+		sectionG = packStr.getSection("g");
+		PCAddress = packStr.getSection("A");
+		
+        readLcrData();
+		return;
+	}
+			
+	if (strID == "934"){
+		PollLcr("34");
+		CommandStatus("Saving command completed successfully!");
+		LeftPanelReloadData();
+		
+		return;
+	}
+}
+
+
+function PollLcr(opcode){
+	
+	switch(opcode){
+		case "30":
+			//sendTimedCommand(strCmdOpcode30,30);
+			SendCommand(strCmdOpcode30);
+			return;
+		case "34":
+			//sendTimedCommand(strCmdOpcode34,34);
+			SendCommand(strCmdOpcode34);
+			return;
+	}
+}
+function CommandStatus(msg){
+	document.getElementById("prgrsBr").innerHTML=msg;
+}
+function HandleSessionErrorEx(ErrNumber, ErrDescription)
+{
+    alert(ErrDescription);
+}
+
+function SaveData(){
+	CommandStatus("Saving data, please wait...");
+	parent.frames[0].SendCommand("SendGenericPacket 34:/x1,0/ALCR/I934/r" + numOfTF + "/G" + GetLocalSectionG());
+	
+}
+
+function IsValidInput(v1,v2){
+	var retVal = false;
+	if (RegExMatch(document.getElementById(v1).value,document.getElementById(v2).value)){
+		retVal = true;
+		document.getElementById(v2).style.backgroundColor = "";
+	}
+	if (!retVal){
+		alert("Time frame format is 'hh.mm'. e.g. <01.45>");
+		document.getElementById(v2).style.backgroundColor = "red";
+	}
+	return retVal;
+
+}
+
+	function LeftPanelReloadData(){
+		PollLcr("34");
+	}
+
+	function RunDisableCommand(){
+		parent.frames[0].SendCommand(disableFeatureCommand);
+	}
+	
+	function UpdateLocalTF(v2){
+		if (IsValidInput("regex",v2)){
+			GetConfiguration().InitTimeFrames(GetLocalSectionG().split(","));
+			ReloadTF();
+			ReadySteadyGo();
+		}
+	}	
+	function ReloadTF(){
+		LocalTimeFrames = GetConfiguration().GetTimeFrames();
+	}		
+	function GetLocalSectionG(){		
+		var hhtml = "";
+		for (x=1; x <= MaxNumOfFrames(); x++){
+			hhtml += document.getElementById("tf" + x + "startTextBox").value + ","
+		}		
+		return hhtml.substr(0, hhtml.length -1 ); //trimming last comma
+	}
+	function MaxNumOfFrames(){
+		return GetConfiguration().NumberOfTimePeriods();
+	}
+	function ReadySteadyGo(){
+
+		RenderMainTable();
+		MoreOrLess();
+		PaintCells(numOfTF);
+	}
+	function readLcrData(){
+	    try{
+		    RefetchLCRConfig();
+
+		}
+        catch(exception){
+	        window.location.href = "LCR-BlankRight.html";
+	    }
+	}
+	
+	function RefetchLCRConfig(){
+
+		ReloadTF();
+		numOfTF = LocalTimeFrames.NumOfFrames();
+		ReadySteadyGo();
+	
+	
+	}
+	function MoreOrLess(){
+		document.getElementById("addTfBtn").disabled = ( numOfTF == allTimeFrames && numOfTF <= 4)? true:false;
+		document.getElementById("remTfBtn").disabled = (numOfTF <= 2)? true:false;	
+	}
+	
+	function PaintCells(numOfTF){
+		for (var i=1; i <= MaxNumOfFrames(); i++){
+				document.getElementById("cell1" + i).style.backgroundColor = 
+				document.getElementById("cell2" + i).style.backgroundColor =
+				document.getElementById("cell3" + i).style.backgroundColor =
+				(i <= numOfTF) ? activeCellColor : inactiveCellColor ;
+
+				document.getElementById("tf" + i + "startTextBox").style.backgroundColor =
+				document.getElementById("tf" + i + "endTextBox").style.backgroundColor =
+				(i <= numOfTF) ? "" : inactiveCellColor ;
+		}
+	}
+	
+	function ChangeAmount(v){
+		numOfTF = numOfTF -0 +0;
+		numOfTF += v;
+		
+		
+		
+		if (numOfTF > LocalTimeFrames.AsArray().length){
+			LocalTimeFrames.AsArray().push(
+				new TimeRange(
+					LocalTimeFrames.AsArray()[LocalTimeFrames.AsArray().length-1].GetEndHour(),
+					LocalTimeFrames.AsArray()[0].GetStartHour()
+				));
+		}
+		if (numOfTF  ==1){ChangeAmount(1);}
+		ReadySteadyGo();
+		
+	}
+	
+	function RenderMainTable(){
+		//HEADER
+		
+		var hhtml = "<table class='Table'><tr><td class='TableHeader'>Frame #</TD>";
+		hhtml += "<td class='TableHeader'>Start Time</td><td class='TableHeader'>End Time</td></tr>";
+		
+		hhtml += RenderRows();
+		
+		hhtml += "</table>";
+		
+		document.getElementById("divGui").innerHTML = hhtml;		
+	
+	}
+	
+	function RenderRows(){
+		allTimeFrames = MaxNumOfFrames()
+		var hhtml = "";
+		
+		for (x=0; x < allTimeFrames ; x ++){
+			hhtml += RenderTimeFrame(x+1, x < numOfTF );
+		}
+		return hhtml;
+	}
+	
+	function RenderTimeFrame(tframeNm, activeFrame){
+		
+		var hhtml = "<tr><td id=\"cell1" + tframeNm + "\">Frame " + tframeNm + ": </td>";
+		var controlId = "tf" + tframeNm + "startTextBox";
+		if (activeFrame){ 
+		hhtml+= "<td id=\"cell2" + tframeNm + "\"><input type='text' onchange='UpdateLocalTF(\"" + controlId + "\")' class='BorderedTextBox' id='" 
+				+ controlId 
+				+ "' value='" 
+				+ LocalTimeFrames.AsArray() [tframeNm-1].GetStartHour() 
+				+ "'></td><td id=\"cell3" + tframeNm + "\"><input type='text' class='BorderedTextBox' id='tf" 
+				+ tframeNm 
+				+ "endTextBox' value='" 
+				+ LocalTimeFrames.AsArray() [tframeNm-1].GetEndHour() 
+				+ "'  disabled='true'></td></tr>";
+		}
+		else{
+		hhtml+= "<td id=\"cell2" + tframeNm + "\"><input type='text' onchange='UpdateLocalTF()' class='BorderedTextBox' id='tf" 
+				+ tframeNm 
+				+ "startTextBox' disabled='true'></td><td id=\"cell3" + tframeNm + "\"><input type='text' class='BorderedTextBox' id='tf" 
+				+ tframeNm 
+				+ "endTextBox' disabled='true'>";		
+				+ "'></td></tr>";		
+		}
+		
+		return hhtml;
+	
+	}   
+	
+function PollLcr(opcode){
+	
+	switch(opcode){
+		case "30":
+			//sendTimedCommand(strCmdOpcode30,30);
+			SendCommand(strCmdOpcode30);
+			return;
+		case "34":
+			//sendTimedCommand(strCmdOpcode34,34);
+			SendCommand(strCmdOpcode34);
+			return;
+	}
+}
+var PCAddressCommand = "SendGenericPacket 65:/AFF/I836";
+var PCAddress="";
+function getPCAddress(){
+	return PCAddress;
+}
+
+var GLBCardConfig;
+function GetConfig(){
+	return GLBCardConfig;
+}
+
+function GetConfiguration(){
+	
+	return GetConfig();
+}
+
+function NumOfGroups(){
+	return GetConfiguration().NumberOfGroups();
+}
+
+</script>
+<font class="settingHeader">
+LCR Time Frames
+</font>
+<hr class="hrLine" noshade>
+			<input type="button" value="Save Settings" id="filterSaveButton" class="Button" onclick="SaveData()">
+	<hr class="hrLine" noshade>
+	<div id="divGui"></div>
+	<hr class="hrLine">
+	<input id="addTfBtn" type="button" class="button" value="+ More" title="Increase the number of time frames" onclick="ChangeAmount(1)">
+	&nbsp;
+	<input id="remTfBtn" type="button" class="button" value="- Less" title="Decrease the number of time frames" onclick="ChangeAmount(-1)">
+	&nbsp;
+    	<input id="remTfBtn1" 
+    		type="button" class="button" 
+    		value="Disable Feature" 
+    		title="Click here if you wish to make the rules active around the clock!" onclick="RunDisableCommand()">
+	
+	<br>
+	<br>
+	<br>
+	<div id="prgrsBr" class="ProgressBar"></div>
+	<div id="helpSection" >
+
+	<div class="title">Time Frames</div>
+	The system features up to 4 time frames, which determine the time of day 
+	each of the Rules is active.  <br />
+	When the Time Frame feature is <strong><u>disabled</u></strong> (default mode), <strong><i>Rules</i></strong> are applied 
+	continuously regardless of the time of day.  <br />
+	When Time Frame feature is <u><strong>enabled</strong></u>, <i><strong>Rules</strong></i> are applied according to time 
+	frames.  <br />
+	A minimum of 2 frames are required (24 hour cycle).  <br />
+	Input format is: hh.mm (e.g. 16.30 - 23.30, 23.30 - 16.30).  <br>
+		<br />
+	[+ More] / [- Less] buttons are used to increase/decrease the number of time 
+	frames. <br>
+		<br />
+	Setting the start time of a time frame will automatically set the end time 
+	of the previous one.
+		</div>
+	
+	<INPUT TYPE="hidden" id="regex" VALUE="((^0[0-9]{1})|(^1[0-9]{1})|(^2[0-3]{1}))(\.)[0-5]{1}[0-9]{1}" > <!-- regEx for hh.mm format-->
+	<!--
+	<INPUT TYPE="hidden" id="regex" VALUE="\d{2}\.\d{2}" > 
+	<!-- regEx for hh.mm format-->
+	
+</body>
+
+</html>
+
+<script type="text/javascript">
+
+		
+</script>

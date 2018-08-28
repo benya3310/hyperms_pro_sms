@@ -1,0 +1,211 @@
+<html>
+<head></head>
+<STYLE type=text/css>TABLE {
+	BORDER-RIGHT: #000000 1px solid; BORDER-TOP: #000000 1px solid; BORDER-LEFT: #000000 1px solid; BORDER-BOTTOM: #000000 1px solid; border-spacing: 0px; cell-spacing: 0px
+}
+TD {
+	PADDING-RIGHT: 0.5em; PADDING-LEFT: 0.5em; FONT-SIZE: 10pt; PADDING-BOTTOM: 2px; PADDING-TOP: 2px; FONT-FAMILY: Arial, Helvetica, sans-serif; WHITE-SPACE: nowrap
+}
+</STYLE>
+<SCRIPT language=javascript src="../utils/utilfuncs.js"></SCRIPT>
+<SCRIPT>
+var G_arVPNGroups = new Array();
+
+function init()
+{
+    parent.frames[0].SendCommand( "VPNGroups /I342" );
+}
+
+function OnData( strMessage )
+{
+    var strCommand = new String( strMessage );
+    var arParam = strCommand.split( " " );
+    var strSection;
+    
+    var packStr = new PacketString( arParam[1] );
+    
+    switch ( arParam[0] )
+    {
+        case "VPNGroupsReply":
+        {
+			var strGroups = packStr.getSection( "g" );
+			if ( strGroups != "" )
+			{
+				G_arVPNGroups = strGroups.split( "," );
+			}
+			
+			displayGroups();
+		}
+	}
+}
+/*
+G_arVPNGroups[ 0 ] = "Orange";
+G_arVPNGroups[ 1 ] = "Cellcom";
+G_arVPNGroups[ 2 ] = "Amigo";
+G_arVPNGroups[ 3 ] = "Pelephon";
+*/
+
+function displayGroups()
+{
+	var strHTML = '<table width="400">';
+	
+	if ( G_arVPNGroups.length == 0 )
+	{
+		strHTML += '<tr bgcolor="#f5f5b0"><td>No group exists.</td><td></td></tr>';	
+	}
+	else
+	{
+		strHTML += '<tr bgcolor="#f5f5b0"><td>Available Groups</td><td></td></tr>';
+	
+		var strColor;
+		var nColorCount = 0;
+		strHTML += '<tr bgcolor="#f0f0f0"><td>General</td>';
+		for (var i=0; i < G_arVPNGroups.length; i++)
+		{
+			if ( nColorCount%2 == 0 )
+			{
+				strColor = "e0e0e0";
+			}
+			else
+			{
+				strColor = "f0f0f0";
+			}
+			
+			nColorCount++;
+			
+			strHTML += '<tr bgcolor="#' + strColor + '"><td>' + G_arVPNGroups[ i ] + '</td>';
+			strHTML += '<td><a href="javascript:removeGroup(' + i + ')">Delete Group</a></td></tr>';
+		}
+	}
+	
+	strHTML += '</table>';
+	document.getElementById( 'DIV_VPNGROUPS' ).innerHTML = strHTML;
+	clearStatus();
+}
+
+function clearStatus()
+{
+	document.getElementById( 'DIV_STATUS' ).innerHTML = "";
+}
+
+function removeGroup( nIndex )
+{
+	clearStatus();
+	
+	if ( G_arVPNGroups.length == 1 )
+	{
+		G_arVPNGroups.length = 0;
+		saveGroups();
+		return;
+	}
+	
+	for (var i=nIndex; i<G_arVPNGroups.length-1; i++)
+	{
+		G_arVPNGroups[ i ] = G_arVPNGroups[ i + 1 ]
+	}
+	
+	G_arVPNGroups.length--;
+	
+	saveGroups();
+}
+
+function onAddGroup()
+{
+	addGroup( document.getElementById( "GroupName" ).value );
+}
+
+function addGroup( strName )
+{
+	clearStatus();
+	
+	if ( strName == "General" )
+	{
+		var strHTML = "Group name 'General' is reserved, please select a new name.";
+		document.getElementById( "DIV_STATUS" ).innerHTML = strHTML;
+		return;
+	}
+
+	if ( !isValidName( strName ) )
+	{
+		var strHTML = "Invalid name for group. Name may consist of alphanumeric characters and the characters '_' and '-'.";
+		document.getElementById( "DIV_STATUS" ).innerHTML = strHTML;
+		return;
+	}
+	
+	for (var i=0; i<G_arVPNGroups.length; i++)
+	{
+		if ( G_arVPNGroups[ i ] == strName )
+		{
+			var strHTML = "Group already exists, please select a new name.";
+			document.getElementById( "DIV_STATUS" ).innerHTML = strHTML;
+			return;
+		}
+		
+	}
+	
+	G_arVPNGroups.push( strName )
+	
+	saveGroups();
+}
+
+function saveGroups()
+{
+	//displayGroups();
+	//return;
+	
+	var strCommand = "VPNGroups /I221/G";
+	
+	for (var i=0; i < G_arVPNGroups.length; i++)
+	{
+		strCommand += G_arVPNGroups[ i ];
+		if ( i < G_arVPNGroups.length-1 )
+		{
+			strCommand += ",";
+		}
+	}
+	
+	parent.frames[0].SendCommand( strCommand );
+	var strHTML = "Saving groups...";
+	document.getElementById( "DIV_STATUS" ).innerHTML = strHTML;
+}
+
+function clickIt( obj, strFile, bPressed, nDebug )
+{
+    obj.bPressed = bPressed;
+    var str = 'document.all.' + obj.name + '.src = "' + strFile + '"';
+    //if (nDebug==1) alert(str);
+    eval( str );
+}
+
+</SCRIPT>
+
+<body onLoad="init();" ondragstart="return false;">
+<font size=4 face="Arial">VPN Groups</font>
+<hr>
+<font face="Arial" size=2>
+
+<br>
+<table>	
+	<tr>
+	<td>Group Name</td><td><input type="text" id="GroupName" onFocus="clearStatus();"></td>
+	</tr>
+	<tr>
+	<td ALIGN="RIGHT"></td>
+	<td><img name="bnext" src="./Up-AddGroup.jpg"
+		onmousedown="clickIt( this, './Down-AddGroup.jpg', 1 );"
+		onmouseup="if (this.bPressed==1) {clickIt( this, './Up-AddGroup.jpg', 0 ); onAddGroup(); }"
+		onMouseOver="style.cursor='hand'" 
+		onmouseout="clickIt( this, './Up-AddGroup.jpg', 0 );"></td>
+	</tr>
+</table>
+<br>
+
+
+
+<hr>
+<div id="DIV_VPNGROUPS"></div>
+<hr>
+<div id="DIV_STATUS"></div>
+</font>
+</body>
+</html>

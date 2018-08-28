@@ -1,0 +1,81 @@
+<HTML>
+<STYLE type=text/css>TABLE {
+	BORDER-RIGHT: #000000 1px solid; BORDER-TOP: #000000 1px solid; BORDER-LEFT: #000000 1px solid; BORDER-BOTTOM: #000000 1px solid; border-spacing: 0px; cell-spacing: 0px
+}
+TD {
+	PADDING-RIGHT: 0.5em; PADDING-LEFT: 0.5em; FONT-SIZE: 10pt; PADDING-BOTTOM: 2px; PADDING-TOP: 2px; FONT-FAMILY: Arial, Helvetica, sans-serif; WHITE-SPACE: nowrap
+}
+</STYLE>
+<BODY bgcolor="white" onLoad="getServerIP()" ondragstart="return false;"> 
+<script type="text/javascript">
+function getServerIP()
+{
+    var strIP = parent.frames[0].getServerIP();
+    document.getElementById("serverIP").value = strIP;
+    
+    var strText = parent.frames[0].getConnectionText();
+    document.getElementById("DIV_connection_state").innerHTML = strText;
+}
+
+function saveIP()
+{
+    var strIP = document.getElementById("serverIP").value;
+    var strCommand = "SaveServerIP " + strIP;
+    parent.frames[0].sendLocalCommand( strCommand );
+    parent.frames[0].updateIP();
+	var strMessage = "<font size='2'>New IP saved and will be used in the next connection.</font>";
+    document.getElementById("DIV_status").innerHTML = strMessage;
+    
+    parent.location.reload( false );    
+}
+
+function setConnectionText( strMessage )
+{
+    document.getElementById("DIV_connection_state").innerHTML = strMessage;
+}
+
+function clickIt( obj, strFile, bPressed, nDebug )
+{
+    obj.bPressed = bPressed;
+    var str = 'document.all.' + obj.name + '.src = "' + strFile + '"';
+    //if (nDebug==1) alert(str);
+    eval( str );
+}
+
+</script>
+
+<font size=4 face="Arial">Hypermedia Server Address</font>
+<hr>
+<font face="Arial">
+<table width=450 border=0>
+<tr>
+    <td>Domain or IP Address</td>
+    <td width=350><INPUT TYPE=TEXT size=17 name="serverIP"></td>
+</tr>
+<tr>
+    <td>
+    <!--
+    <a href='javascript:saveIP()'>Save as default connection</a>
+    -->
+    <img name="bnext" src="./Up-SaveSettings.jpg"
+    onmousedown="clickIt( this, './Down-SaveSettings.jpg', 1 );"
+    onmouseup="if (this.bPressed==1) {clickIt( this, './Up-SaveSettings.jpg', 0 ); saveIP(); }"
+    onMouseOver="style.cursor='hand'" 
+    onmouseout="clickIt( this, './Up-SaveSettings.jpg', 0 );">
+    </td>
+</tr>
+</table>
+<br>
+<div id="DIV_status"></div>
+
+<br>
+<table width=450 border=0>
+<tr>
+    <td bgcolor="#f0f0f0">Connection state:</td>
+    <td bgcolor="#fff9a6" width=350><div id="DIV_connection_state"></div></td>
+</tr>
+</table>
+
+
+</BODY>
+</HTML>

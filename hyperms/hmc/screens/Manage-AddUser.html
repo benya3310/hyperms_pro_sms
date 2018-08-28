@@ -1,0 +1,197 @@
+<html>
+<head></head>
+<STYLE type=text/css>TABLE {
+	BORDER-RIGHT: #000000 0px solid; BORDER-TOP: #000000 0px solid; BORDER-LEFT: #000000 0px solid; BORDER-BOTTOM: #000000 0px solid; border-spacing: 0px; cell-spacing: 0px
+}
+TD {
+	PADDING-RIGHT: 0.5em; PADDING-LEFT: 0.5em; FONT-SIZE: 10pt; PADDING-BOTTOM: 2px; PADDING-TOP: 2px; FONT-FAMILY: Arial, Helvetica, sans-serif; WHITE-SPACE: nowrap
+}
+</STYLE>
+<SCRIPT language=javascript src="../utils/utilfuncs.js"></SCRIPT>
+<SCRIPT>
+var G_arVPNGroups = new Array();
+
+function init()
+{
+	document.getElementById( "DIV_STATUS" ).innerHTML = "Querying VPN groups...";
+    parent.frames[0].SendCommand( "VPNGroups /I345" );
+}
+
+function OnData( strMessage )
+{
+    var strCommand = new String( strMessage );
+    var arParam = strCommand.split( " " );
+    var strSection;
+    
+    var packStr = new PacketString( arParam[1] );
+    
+    switch ( arParam[0] )
+    {
+        case "VPNGroupsReply":
+        {
+			var strGroups = packStr.getSection( "g" );
+			if ( strGroups != "" )
+			{
+				G_arVPNGroups = strGroups.split( "," );
+			}
+			
+			renderForm();
+		}
+	}
+}
+
+function renderForm()
+{
+	document.getElementById( "DIV_STATUS" ).innerHTML = "";
+	var strHTML = '<form name="input"><input type="hidden" name="password"></input><table bgcolor="#efefef">';
+	
+	//{
+		strHTML += 	'<tr ALIGN="LEFT">';
+		strHTML += 	'<td ALIGN="RIGHT">User ID</td><td><input type="text" name="userid"></td>';
+		strHTML += 	'</tr>';
+	//}
+	
+	strHTML += 	'<tr ALIGN="LEFT">';
+	strHTML += 	'<td ALIGN="RIGHT">Full Name</td><td><input type="text" name="fullname"></td>';
+	strHTML += 	'</tr>';
+	strHTML += 	'<tr ALIGN="LEFT">';
+	strHTML += 	'<td ALIGN="RIGHT">Code</td><td><input type="text" name="username"></td>';
+	strHTML += 	'</tr>';
+	strHTML += 	'<tr ALIGN="LEFT">';
+	strHTML += 	'<td ALIGN="RIGHT">Mobile number</td><td><input type="text" size=3 name="prefix">-<input type="text" size=15 name="number"></td>';
+	strHTML += 	'</tr>';
+	strHTML += 	'<tr ALIGN="LEFT">';
+	strHTML += 	'<td ALIGN="RIGHT">VPN Group</td><td><select name="vpngroup">';
+	strHTML += 	'<option>General</option>';
+	for (var i=0; i < G_arVPNGroups.length; i++)
+	{
+		strHTML += 	'<option>' + G_arVPNGroups[ i ] + '</option>';
+	}
+	strHTML += '</select></td>';
+	strHTML += 	'</tr>';
+	
+	strHTML += 	'<tr ALIGN="LEFT">';
+	strHTML += 	'<td ALIGN="RIGHT"><br><b>Callback Access:</b></td><td></td>';
+	strHTML += 	'</tr>';
+
+
+	strHTML += '<tr ALIGN="LEFT">';
+	strHTML += '<td>';
+	strHTML += '<INPUT TYPE=CHECKBOX CHECKED name="allowWeb"> Web';
+	strHTML += '</td><td></td>';
+	strHTML += '</tr>';
+
+	strHTML += '<tr ALIGN="LEFT">';
+	strHTML += '<td>';
+	strHTML += '<INPUT TYPE=CHECKBOX name="allowLine" onClick="onAllowLine();"> Line';
+	strHTML += '</td><td id="id_accessNumber">Access Number&nbsp;<input type="text" name="accessNumber"></td>';
+	strHTML += '</tr>';
+
+	strHTML += '<tr ALIGN="LEFT">';
+	strHTML += '<td>';
+	strHTML += '&nbsp;&nbsp;&nbsp;&nbsp<INPUT TYPE="RADIO" DISABLED CHECKED id="radioCLI" name="lineType" onClick="onSelectCLI();">Use CLI';
+	strHTML += '</td><td></td>';
+	strHTML += '</tr>';
+
+	strHTML += '<tr ALIGN="LEFT">';
+	strHTML += '<td>';
+	strHTML += '&nbsp;&nbsp;&nbsp;&nbsp<INPUT TYPE="RADIO" DISABLED id="radioLine" name="lineType" onClick="onSelectLineID();">Use Line ID';
+	strHTML += '</td><td id="id_lineID">Line Number&nbsp;&nbsp<input type="text" name="lineID"></input></td>';
+	strHTML += '</tr>';
+	
+	strHTML += '<tr ALIGN="LEFT">';
+	strHTML += '<td>';
+	strHTML += '&nbsp;&nbsp;&nbsp;&nbspDTMF on connect:';
+	strHTML += '</td><td id="id_sendDTMF"><INPUT TYPE="TEXT" size="10" id="SendDTMF" name="DTMFPrefix"></INPUT></td>';
+	strHTML += '</tr>';
+	
+	strHTML += 	'</table>';
+	strHTML += 	'<br>';
+	strHTML += 	'<table>';	
+	strHTML += 	'<tr>';
+	strHTML += 	'<td ALIGN="RIGHT"></td>';
+	strHTML += 	'<td><img name="bnext" src="./Up-AddUser.jpg"';
+	strHTML += 	' onmousedown="clickIt( this, \'./Down-AddUser.jpg\', 1 );"';
+	strHTML += 	' onmouseup="if (this.bPressed==1) {clickIt( this, \'./Up-AddUSer.jpg\', 0 ); submitForm(); }"';
+	strHTML += 	' onMouseOver="style.cursor=\'hand\'"';
+	strHTML += 	' onmouseout="clickIt( this, \'./Up-AddUser.jpg\', 0 );"></td>';
+	strHTML += 	'</tr></table></form>';
+	document.getElementById( "DIV_ADDUSERFORM" ).innerHTML = strHTML;
+	var objAccessNum = document.getElementById( "id_lineID" );
+	objAccessNum.style.visibility = "hidden";	
+	var objAccessNum = document.getElementById( "id_accessNumber" );
+	objAccessNum.style.visibility = "hidden";	
+}
+
+var G_bAllowLine = 0;
+
+function onSelectLineID()
+{
+	var objLineID = document.getElementById( "id_lineID" );
+	objLineID.style.visibility = "visible";
+}
+
+function onSelectCLI()
+{
+	var objLineID = document.getElementById( "id_lineID" );
+	objLineID.style.visibility = "hidden";
+}
+
+function onAllowLine()
+{
+	var objRadioLine = document.getElementById( "radioLine" );
+	var objRadioCLI = document.getElementById( "radioCLI" );
+	var objAccessNum = document.getElementById( "id_accessNumber" );
+	var objLineID = document.getElementById( "id_lineID" );
+
+	if ( G_bAllowLine == 0 )
+	{
+		objRadioLine.disabled = false;
+		objRadioCLI.disabled = false;
+		objAccessNum.style.visibility = "visible";
+		if ( objRadioLine.checked )
+		{
+			objLineID.style.visibility = "visible";
+		}
+		G_bAllowLine = 1;
+	}
+	else
+	{
+		objRadioLine.disabled = true;
+		objRadioCLI.disabled = true;
+		objAccessNum.style.visibility = "hidden";
+		objLineID.style.visibility = "hidden";
+		G_bAllowLine = 0;
+	}
+	
+
+}
+
+function submitForm()
+{
+	// var strServerAddr = "127.0.0.1";
+	var strPassword		= parent.frames[0].getPassword();
+	var strServerAddr	= parent.frames[0].getServerIP();
+	document.input.method = "get";
+	document.input.password.value = strPassword;
+	document.input.action = "http://" + strServerAddr + "/cb/adduser.php";
+	document.input.submit();
+}
+
+function clickIt( obj, strFile, bPressed, nDebug )
+{
+    obj.bPressed = bPressed;
+    var str = 'document.all.' + obj.name + '.src = "' + strFile + '"';
+    //if (nDebug==1) alert(str);
+    eval( str );
+}
+</SCRIPT>
+<body onLoad=init(); ondragstart="return false;">
+<font size=4 face="Arial">New User Information</font>
+<hr>
+<font face="Arial" size=2>
+<div id="DIV_ADDUSERFORM"></div>
+<div id="DIV_STATUS"></div>
+</font>
+</body>
+</html>

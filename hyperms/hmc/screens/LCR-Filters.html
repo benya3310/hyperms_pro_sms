@@ -1,0 +1,313 @@
+<html>
+
+<head>
+<meta http-equiv="Content-Language" content="en-us">
+
+<link type="text/css" href="../default.css" rel="stylesheet">
+<title>OUT Filters</title>
+</head>
+
+<body onload="init()">
+<script src="../js/prototype.js" type="text/javascript"></script>
+<script src="../js/prototype.addon.js" type="text/javascript"></script>
+
+<script src="../js/LCRGuiUtils.js" type="text/javascript"></script>
+<script src="../js/utilfuncs.js" type="text/javascript"></script>
+<script src="../js/alloc_logic.js" type="text/javascript"></script>
+<script src="../js/ConfigInfo.js" type="text/javascript"></script>
+
+<script type="text/javascript">
+
+try{
+
+
+	var prgrsBrReadingMsg = "Loading Filters";
+	var prgrsBrWritingMsg = "Updating Filter";
+	
+	
+	var iMode = "reading";
+	var G_nID = 0;
+	var G_strConnectState = "NotConnected";
+	var G_strConnectionText;
+	
+	var G_arVersions;
+	var G_arSerials;
+	
+	var G_arHistory = new Array();
+	var G_nLast = 0;
+	
+	G_arClearCommands = new Array();
+	G_nClearCommandsIndex = 0;
+	
+	
+	var G_strPass;
+	
+	var G_CurrentFilter= 0;
+	var G_currentWritingFilter = 0;
+	
+	var arFilter = []; //new Array(GLBCardConfig.NumberOfFilters());
+	
+	
+	
+	}
+	
+	catch(exception){
+	    window.location.href = "LCR-BlankRight.htm";
+	}
+	function init()
+	{
+		parent.frames[0].SendCommand( "GetGWConfig" );
+	}
+	function runNextFilter(){
+		G_CurrentFilter += 1;
+	}
+	function OnData(strMessage)
+	{
+	    try{
+		    var strCommand = new String( strMessage );
+		    var arParam = strCommand.split( " " );
+		
+			if ( arParam.length < 1 )
+			{
+			return;
+			}
+			
+			var packStr = new PacketString( arParam[ 1 ] );
+			var strID = packStr.getSection( "I" );
+			var response;
+			
+			/*BEGIN GET CONFIG BLOCK*/
+			
+			
+			if (arParam[0] == "GWConfigInfo"){
+            
+				if ( packStr.getSection( "c" ).indexOf("LCR") == -1 )
+				{
+					// no LCR
+                 $('filterSaveButton').disabled = true;
+					document.getElementById("filterTable").innerHTML = "No LCR was found.";
+					return;
+				
+				}
+				
+				GLBCardConfig = new LCRConfig(arParam[1]);
+								
+				PollLcr("30");
+				
+				return;
+			}		
+			
+			if (strID == "830"){
+
+				sectionG = packStr.getSection("g");
+				if (sectionG != null){
+					GLBCardConfig.InitResources(sectionG.split(","));
+				}
+				else{
+					GLBCardConfig.InitResources(null);
+				}
+				readLcrData();
+			}
+			/*END OF GET CONFIG*/
+			if (strID == "833" && G_CurrentFilter<=NumOfFilters()){
+				parseFilter(packStr.getSection("g").split(","));
+				
+				GetNextFilter();
+				return;
+			}
+			
+			if (strID == "933" && G_currentWritingFilter <=NumOfFilters()){
+				SetNextFilter();
+				return;
+			}
+		}
+		catch(e){
+			
+			alert(e);
+		}
+	}
+	
+	function HandleSessionErrorEx(ErrNumber, ErrDescription){
+	    alert(ErrDescription);
+	}
+	
+	
+	function parseFilter(arLcrData){
+		var filterNum = arLcrData[0];
+		arFilter[G_CurrentFilter] = arLcrData;		
+	}
+	
+	function readLcrData(){
+		
+	    try{
+		    GetNextFilter();
+		}
+		catch(exception){
+		    window.location.href = "BlankRight.htm";
+		}
+		
+	}
+	
+	
+	function GetNextFilter(){
+		
+		if (G_CurrentFilter < NumOfFilters()){
+		
+			G_CurrentFilter++;
+			
+			ReadFilter();
+			updateProgress(prgrsBrReadingMsg , G_CurrentFilter, NumOfFilters());
+			return;
+		}
+		loadFilterTable();
+	}
+	
+	function ReadFilter(){
+		try{
+			var strCmd = "SendGenericPacket 33:/x1,0/ALCR/I833/Q" + G_CurrentFilter.toString();
+			parent.frames[0].SendCommand(strCmd);
+			}
+			catch (e){
+				alert(e);
+			}
+	}
+			
+	
+	function loadFilterTable(){
+		try{		
+			document.getElementById("filterTable").innerHTML = RenderFilterTable(arFilter);
+			G_CurrentFilter = 0;
+		}
+		catch (e) {
+			
+			alert(e);
+		}
+	}
+	
+	function writeLcrData(){
+		try{
+			SetNextFilter();
+		}
+		catch(e){
+			alert(e);
+		}
+		
+	}
+	function SetNextFilter(){
+		
+		
+		if (G_currentWritingFilter < NumOfFilters()){
+			
+			G_currentWritingFilter++;
+			updateProgress(prgrsBrWritingMsg,G_currentWritingFilter, NumOfFilters());
+			sendFilterCommand(G_currentWritingFilter);
+			return;
+		}
+	
+		G_currentWritingFilter = 0; 
+	}
+	
+	function sendFilterCommand(strFilterNum){
+		
+		var strTrim = document.getElementById("filter" + strFilterNum.toString() + "trimCombo").value;
+		var strAppend = document.getElementById("filter" + strFilterNum.toString() + "addTextBox").value;
+
+				
+		var strFilterCondition = $("filterCondition"  + strFilterNum).value;
+
+
+		var strCommand = "SendGenericPacket 33:/x1,0/ALCR/I933/G" + strFilterNum + "," + strTrim + "," + strAppend
+		
+		if (strFilterCondition )
+			strCommand += ',' + strFilterCondition;
+			
+		parent.frames[0].SendCommand(strCommand);
+	}
+
+	
+	function NumOfFilters(){
+		return GetConfiguration().NumberOfFilters();
+	}
+	
+	
+	function IsValidInput(v1,v2){
+		var retVal = true;
+		if (RegExMatch(document.getElementById(v1).value,document.getElementById(v2).value)){
+			retVal = false;
+		}
+		if (!retVal && document.getElementById(v2).value.indexOf("*") > -1 ){
+			retVal = true;
+		}
+		if (!retVal){
+			alert("Prefix may only contain either a digits or '*'");
+			document.getElementById(v2).style.backgroundColor = "red";
+			return;
+		}
+		document.getElementById(v2).style.backgroundColor = "";
+	
+	}
+
+	function PollLcr(opcode){
+		
+		switch(opcode){
+			case "30":
+				parent.frames[0].SendCommand(strCmdOpcode30);
+				return;
+			case "34":
+				parent.frames[0].SendCommand(strCmdOpcode34);
+				return;
+		}
+	}	
+
+	var GLBCardConfig;
+
+	function GetConfig(){
+		return GLBCardConfig;
+	}
+	
+	function GetConfiguration(){		
+		return GetConfig();
+	}
+
+
+</script>
+
+
+
+<font class="settingHeader">
+LCR OUT-Filters
+</font>
+
+<hr class="hrLine" noshade>
+	<input type="button" value="Save Settings" id="filterSaveButton" class="Button" onclick="writeLcrData()">
+	<hr class="hrLine" noshade>
+	<div id="filterTable"></div>
+	<div id="DIV_Connect" class="LogLine"></div>
+	<div id="DIV_Reply" class="LogLine"></div>
+	<hr class="hrLine">
+	<div id="prgrsBr" class="ProgressBar"></div>
+	<div id="helpSection">
+	<div class="title">OUT-Filters</div>
+	The system supports up to 4 filters. A filter is a set of manipulations 
+	made over dialed numbers. A filter consist of 2 parameters: Trim Left and 
+	Add Left. <br />
+	Filters are activated by associating them with Groups.  <br>
+		<br />
+		<strong><i>Trim Left:</i></strong> The number of digits to trim from the left side of the dialed 
+	number. <br />
+	(e.g. <i><strong>Trim Left:</strong></i>4, when applied on '9425251125' results in '251125')  <br />
+		<i><strong>Add Left: </strong></i>A constant string of digits to be added on the left side of a 
+	dialed number.  <br />
+	 <br />
+		<strong>Please note:</strong> If both Trim Left and Add Left have been defined, then the 
+	sequence of operations is from left to the right (trim and then add). 
+
+    </div>
+
+
+
+<INPUT TYPE="hidden" id="regex" VALUE="\D" >
+
+</body>
+
+</html>

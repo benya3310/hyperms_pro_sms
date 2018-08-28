@@ -1,0 +1,396 @@
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+<link type="text/css" href="../default.css" rel="stylesheet" />
+<title>LCR Control | RULES</title>
+</head>
+
+<body  onload="StartConfigInitializationProcess()">
+<script src="../js/prototype.js" type="text/javascript"></script>
+<script src="../js/prototype.addon.js" type="text/javascript"></script>
+
+<script src="../js/LCRGuiUtils.js" type="text/javascript"></script>
+<script src="../js/utilfuncs.js" type="text/javascript"></script>
+<script src="../js/alloc_logic.js" type="text/javascript"></script>
+<script src="../js/ConfigInfo.js" type="text/javascript"></script>
+
+
+<script type="text/javascript">
+	
+	try
+	{
+		var arTFSettings = new Array();
+		
+		var iConnected = 1;
+		var iMode = "reading";
+		var G_nID = 0;
+		var G_strConnectState = "NotConnected";
+		var G_strConnectionText;
+		
+		var G_arVersions;
+		var G_arSerials;
+		
+		var G_arHistory = new Array();
+		var G_nLast = 0;
+		
+		G_arClearCommands = new Array();
+		G_nClearCommandsIndex = 0;
+		
+		var G_strPass;
+		
+		var G_DefaultRuleGroupNumber=0;
+		var G_CurrentRule= 0;
+		var G_currentWritingRule= 0;
+		var arRule; 
+		var arRuleParams; 
+	}
+	
+	catch(exception)
+	{
+	    window.location.href = "LCR-BlankRight.html";
+	}
+
+	function OnData(strMessage)
+	{
+	    var strCommand = new String( strMessage );
+	    var arParam = strCommand.split( " " );
+	
+		if ( arParam.length < 1 ){
+		return;
+		}
+		
+		var packStr = new PacketString( arParam[ 1 ] );
+		var strID = packStr.getSection( "I" );
+		var response;
+		
+		if (arParam[0] == "GWConfigInfo")
+		{
+            if ( packStr.getSection( "c" ).indexOf("LCR") == -1 )
+			{
+				// no LCR
+                $(rule1Save).disabled = true;
+                document.getElementById("DIV_RuleZero").innerHTML = "No LCR was found.";
+				document.getElementById("Default-Wizard").innerHTML = "";
+				return;
+			}
+			GLBCardConfig = new LCRConfig(arParam[1]);
+			arRule = new Array(NumOfRules());
+			arRuleParams = new Array(NumOfRules());
+			SendCommand(PCAddressCommand);
+			PollLcr("30");
+			return;
+		}	
+	
+		if (strID == "830")
+		{
+			sectionG = packStr.getSection("g");
+			if (sectionG != null)
+			{
+				GLBCardConfig.InitResources(sectionG.split(","));
+			}
+			else
+			{
+				GLBCardConfig.InitResources(null);
+			}
+			SendCommand(LCRGroupCollection.queryCommand);
+			return;
+		}
+
+		if (strID == "777")
+		{
+			LCRGroupCollection.parseGroups(strMessage);
+			PollLcr("34");
+			return;
+		}
+
+		if (arParam[0] == "CardInfo" && strID == "836")
+		{
+			sectionG = packStr.getSection("g");
+			PCAddress = packStr.getSection("A");          
+		}
+
+		if (strID == "834")
+		{
+			sectionG = packStr.getSection("g");
+			if(sectionG != null){
+				GLBCardConfig.InitTimeFrames(packStr.getSection("g").split(","));
+			}
+			readLcrData();
+			return;
+		}
+
+		if ( strID == "231" )
+		{
+            SetNextRule();
+        }
+
+		if (strID == "831" && ( G_CurrentRule <= NumOfRules() ) && iConnected == 1)
+		{
+			var strRuleParams = packStr.getSection("i");
+			var arRulePar = "";
+			if ( strRuleParams != null )
+			{
+				arRulePar = strRuleParams.split(",");
+			}
+			parseRule( (packStr.getSection("g").split(",")), arRulePar );
+			GetNextRule();
+			return;
+		}
+
+		if (strID == "931" && G_currentWritingRule <= NumOfRules() && iConnected == 1)
+		{
+			SetNextRule();
+			return;
+		}
+		
+		if (strID == "331")
+		{
+			lcrAck = packStr.getSection("g").split(",");
+            //alert(  packStr.getSection("g") );
+			RenderDefaultRule(lcrAck[2],lcrAck[6],lcrAck[3],lcrAck[7] );
+			GetTFLegend();
+		}
+	}
+
+	function RenderDefaultRule(defaultRule, defDB, textRule, textDB)
+	{
+		document.getElementById("DIV_RuleZero").innerHTML = RenderRuleZeroTable(defaultRule,defDB, textRule, textDB);
+	}
+	
+	function parseRule(arLcrData, arLcrParams)
+	{
+		var ruleNum = arLcrData[0];       
+		arRule[ ruleNum ] = arLcrData;
+		arRuleParams[ ruleNum ] = arLcrParams;
+		arTFSettings .push(GetTimeFramesArray(arLcrData[5]));
+	}
+	
+	function HandleSessionErrorEx(ErrNumber, ErrDescription)
+	{
+	    alert(ErrDescription);
+	}
+	
+	function readLcrData()
+	{
+	    try{
+		    GetNextRule();
+		}
+		catch(exception){
+		    window.location.href = "BlankRight.htm";
+		}
+	}
+	
+	function GetNextRule()
+	{
+		if (G_CurrentRule < NumOfRules())
+		{
+			G_CurrentRule++;
+			updateProgress(prgrsBrReadingMsg,G_CurrentRule, NumOfRules());
+			ReadRule();
+			return;
+		}
+		loadRuleTable();
+	}	
+	
+	function ReadRule()
+	{
+		parent.frames[0].SendCommand("SendGenericPacket 31:/x1,0/ALCR/I831/Q" + G_CurrentRule.toString());
+	}
+	
+	function writeLcrData()
+	{
+        WriteDefaultRule();
+	}
+	
+	function SetNextRule()
+	{
+		if (G_currentWritingRule < NumOfRules())
+		{
+			G_currentWritingRule ++;
+			updateProgress(prgrsBrWritingMsg,G_currentWritingRule,NumOfRules());
+			WriteRule(G_currentWritingRule);
+			return;
+		}
+		G_currentWritingRule = 0;
+	}
+	
+	function loadRuleTable()
+	{
+		document.getElementById("TableDiv").innerHTML = RenderRulesTable(arRule, GetConfiguration().GetTimeFrames().NumOfFrames(), arRuleParams);
+		document.getElementById("helpSection").className = "visibile";
+		document.getElementById("helpSection").style.visibility = "visible";
+		ReadDefaultRule();
+	}
+	
+	function ReadDefaultRule()
+	{
+		parent.frames[0].SendCommand("SendGenericPacket 31:/x1,0/ALCR/I331/Q0");
+	}
+
+	function WriteDefaultRule()
+	{
+        document.getElementById("prgrsBr").innerHTML = prgrsBrWritingDefRl+ ": 1 of 1";
+        var defaultRule4NumericNumber = $("rule0groupC").value;
+        var defaultRule4TextualNumber = $("rule0groupD").value;
+        var defaultRuleQueryDB =  ($("cb1" ).checked ) ?  getPCAddress() : "";
+        var defaultTextRuleQueryDB =  ($("cb2" ).checked ) ?  getPCAddress() : "";
+		parent.frames[0].SendCommand("SendGenericPacket 31:/x1,0/ALCR/I231/G0,," + defaultRule4NumericNumber + "," + defaultRule4TextualNumber + ",,," + defaultRuleQueryDB + "," + defaultTextRuleQueryDB);
+	}
+
+	function WriteRule(ruleId)
+	{
+		var ruleSet =  GetRuleSettings(ruleId);        
+		if (ruleId == 1)
+		{
+			ruleSet;
+		}
+		parent.frames[0].SendCommand("SendGenericPacket 31:/x1,0/ALCR/I931/G" + ruleSet);
+	}
+	
+	function GetRuleSettings(ruleId)
+	{
+		var strPar = "";
+		var ruleNumber = ruleId;
+		var rulePrefix = document.getElementById("rule" + ruleId.toString() + "prefix").value;
+		var ruleGroupC = document.getElementById("rule" + ruleId.toString() + "groupC").value;
+		var ruleGroupD = document.getElementById("rule" + ruleId.toString() + "groupD").value;
+		var ruleGroupE = document.getElementById("rule" + ruleId.toString() + "groupE").value;
+		var ruleQueryDB =  ( $("reportChk" + ruleId.toString()).checked ) ?  getPCAddress() : "";
+		if ($("npChk" + ruleId.toString()) != null)
+		{
+			strPar += "/i" + ( ( $("npChk" + ruleId.toString()).checked ) ? "1" : "0" );
+		}
+		return ruleNumber + "," + rulePrefix + "," + ruleGroupC + "," + ruleGroupD + "," + ruleGroupE + "," + GetTFSettings(ruleId) + "," + ruleQueryDB + strPar;
+	}
+
+	function GetTFSettings(ruleId)
+	{
+		var arToRev = arTFSettings[ruleId-1].reverse();
+	    var st1= "";
+	    for (i=3; i >-1 ; i --)
+		{
+	        st1 = arToRev[i].toString() + st1;
+		}
+	    st1 = "0000" + st1;
+		return num2hex( bin2num(st1));
+	}
+	
+	var prgrsBrReadingMsg = "Loading Rules";
+	var prgrsBrWritingMsg = "Updating Rules";
+	var prgrsBrWritingDefRl = "Updating Default Rule";
+	
+	function NumOfRules()
+	{
+		return GetConfiguration().NumberOfRules();
+	}
+	
+	function UpdateRuleTF(x,y)
+	{
+		arTFSettings[x][y] = (arTFSettings[x][y] == "0" || arTFSettings[x][y] == 0)? "1":"0";
+	}
+	
+	function foobar()
+	{
+	}
+	
+	function GetTFLegend()
+	{
+		var cinf = GetConfiguration().GetTimeFrames().AsArray();
+		var hhtml = "<a href= 'LCR-TimeFrames.html' title='Go to: Time Frames page...'>TF = Time Frame. </a> | ";
+		for (x = 0; x < cinf.length; x++)
+		{
+			hhtml += "TF" + (x+1).toString() + ": " + cinf[x].GetStartHour() + " - " + cinf[x].GetEndHour() + " | ";
+		}
+		document.getElementById("DIV_Legend").innerHTML = hhtml; 	
+	}
+	
+	function IsValidInput(v1,v2)
+	{
+		document.getElementById(v2).style.backgroundColor = "";
+		document.getElementById("rule1Save").disabled = false;
+		
+		var retVal = false;
+		
+		if (RegExMatch(document.getElementById(v1).value,document.getElementById(v2).value)
+				|| (document.getElementById(v2).value == "")
+				|| (document.getElementById(v2).value.indexOf("*") > -1)
+				|| (document.getElementById(v2).value.indexOf("?") > -1) )
+		{
+			retVal = true;
+		}
+	
+		if (!retVal)
+		{
+			alert("Prefix may only contain either digits, '*' or '?'");
+			document.getElementById(v2).style.backgroundColor = "red";
+			document.getElementById("rule1Save").disabled = true;
+			return;
+		}
+	}
+
+    var PCAddressCommand = "SendGenericPacket 65:/AFF/I836";
+    var PCAddress="";
+
+	function getPCAddress()
+	{
+		return PCAddress;
+	}
+
+	var GLBCardConfig;
+	
+	function GetConfig()
+	{
+		return GLBCardConfig;
+	}
+	
+	function GetConfiguration()
+	{
+		return GetConfig();
+	}
+
+</script>
+<span class="SettingHeader">
+LCR Rules</span>
+<hr class="hrLine" />
+<input type="button" id="rule1Save" value="Save Settings" class="Button" onclick="writeLcrData()" />
+<div id="prgrsBr" class="ProgressBar"></div>
+<hr class="hrLine" />
+
+<span id="DIV_RuleZero"></span>
+<br />
+<span id="DIV_Legend" class="tableCell" style="border:0px; font-weight:bold;"></span>
+	<div id="TableDiv"></div>
+	<div id="DIV_Connect" class="LogLine"></div>
+	<div id="DIV_Reply" class="LogLine"></div>
+	<hr class="hrLine"/>
+	<div id="helpSection" style="visibility: hidden;">
+		<div class="title">Rules</div>
+		The LCR System features up to 32 rules, which determine, according to the 
+		beginning of a dialed number (prefix), to which group(s) the call will be 
+		routed, and in which sequence.  <br />
+		The second and the third groups are relevant when the resources available to 
+		the first group are fully occupied (with other active calls).  <br>
+		<br />
+		In addition, rules can be bound to some or all Time Frames (when these are 
+		set), which will result in these rules being scan for a match only on 
+		specific time periods during the day. <br />
+		Default Rule is the one to take control in case the dialed number does not 
+		match any of the prefixes. This rule is active on all time frames, 
+		regardless of the time of day.  <br>
+		<br />
+		The rules are scanned from top to bottom, which means that a bottom rule may 
+		include a shorter prefix similar to the beginning of the prefix on a rule at 
+		the top, but not the other way around.  <br><br />
+		<i><u>Example:</i></u> Rule 1 has a prefix of 082 and rule 2 has a prefix of 08. This will 
+		cause calls with dialed numbers beginning with 082 to be routed according to 
+		rule 1, while the rest of the calls with numbers beginning with 08 (meaning 
+		081,083,084...089) shall be handled according to rule 2.
+		(If rule 2 had appeared before rule 1, calls beginning with 082 would have 
+		been handled the same way as all other calls beginning with 08).
+	</div>	
+<input type="hidden" id="regex" value="\d*" />
+
+
+</body>
+
+</html>

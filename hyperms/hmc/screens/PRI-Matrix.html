@@ -1,0 +1,315 @@
+<HTML>
+<link type="text/css" href="../default.css" rel="stylesheet">
+<HEAD><TITLE>Cellular Gateways - Configuration</TITLE></HEAD>
+<STYLE type=text/css>TABLE {
+	BORDER-RIGHT: #000000 1px solid; BORDER-TOP: #000000 1px solid; BORDER-LEFT: #000000 1px solid; BORDER-BOTTOM: #000000 1px solid; border-spacing: 0px; cell-spacing: 0px
+}
+TD {
+	PADDING-RIGHT: 0.5em; PADDING-LEFT: 0.5em; FONT-SIZE: 10pt; PADDING-BOTTOM: 2px; PADDING-TOP: 2px; FONT-FAMILY: Arial, Helvetica, sans-serif; WHITE-SPACE: nowrap
+}
+</STYLE>
+<script language=JavaScript src="../utils/TableRender.js"></script> 
+<SCRIPT language=javascript src="../utils/utilfuncs.js"></SCRIPT>
+<SCRIPT language=javascript src="../utils/alloc_logic.js"></SCRIPT>
+<SCRIPT language=javascript src="../utils/media_allocs_UI.js"></SCRIPT>
+<SCRIPT>
+// Received command from applet
+var G_arAddresses	= new Array();
+var G_strE1Addr = "";
+var G_strT1Addr = "";
+var G_strSelCardType;
+function getAddress( strCards, strCardType )
+{  
+    var str = strCards.substring(strCards.indexOf(strCardType));    
+    if ( str.indexOf("|") > -1)
+        str = str.substring(0,str.indexOf("|"));
+    return str;   
+}
+function init()
+{
+    getGWConfig();
+}
+
+function getGWConfig()
+{
+    parent.frames[0].SendCommand( "GetGWConfig" );
+}
+
+function OnData( strMessage )
+{
+
+    var strCommand = new String( strMessage );
+    var strParam = strCommand.split( " " );
+    var strSection;
+    
+    var packStr = new PacketString( strParam[1] );
+    
+    switch ( strParam[0] )
+    {
+        case "GWConfigInfo":
+        {
+			//alert( strMessage );
+ 			var objSelect = G_allocUI.getSelectCardHTML( packStr, "E1.0,T1.0", "Select PRI card" );
+            var strHTML = objSelect.m_strHTML;
+			var strSelCard = objSelect.m_strSelCard;
+			var strSelCardType = objSelect.m_strSelCardType;
+            		
+			var strCards = packStr.getSection( "c" );
+           //alert("strMessage: " + strMessage);
+           //alert("strCards: " + strCards);
+			G_strE1Addr =  getAddress( strCards, "E1.0" );//strCards.substring( strCards.indexOf("E1") ) ;						
+			G_strT1Addr =  getAddress( strCards, "T1.0" );//strCards.substring(strCards.indexOf("T1"),strCards.indexOf("|",strCards.indexOf("T1")));	
+            document.getElementById("selectcard").innerHTML = strHTML ;//+ "<br>" + getSettingPannel();
+            
+            if ( strSelCard != null )
+            {
+                G_allocUI.onSelectCard( strSelCard, strSelCardType );
+            }
+            G_configInfo.processConfigInfo( packStr );	
+            G_arAddresses	= new Array();            
+			FillCardType( "CG4.0" );
+			FillCardType( "CC4.0" );
+			FillCardType( "CT4.1" );
+			FillCardType( "CU4.1" );
+           sortCardsAddresses();
+            break;
+        }
+        
+        case "Ack":
+        {
+            G_allocUI.processAck( packStr );
+            if ( packStr.getSection( "I" ) == "7" )
+            {
+                document.getElementById("DIV_SaveConfig").innerHTML = "Configuration Saved!";
+                parent.frames[0].SendCommand( "GetGWConfig" );
+            }
+            
+            break;
+        }
+        
+        case "GWError":
+        {
+            G_allocUI.processErr( packStr );
+            alert( "Got error message:" + strMessage );
+            break;
+        }
+
+        default:
+        {
+            // Send this to TCPServer log file ? internal log file ?
+            //alert( "Got unknown message:" + strMessage );
+            break;
+        }
+    }
+}
+
+var G_nPRICardMatrixTimerID;
+
+function createTableElements( strCardAddress )
+{
+    
+    var oTable = new Object(); // The table object
+    var oHeader = new Array(); // The table header object
+
+    // A cell in the table header
+    var oHeaderCell;
+
+    //////////////////////////////////////////////
+    // Create the header structure of the table
+
+    // Header of 1st column in table
+    oHeaderCell = new Object();
+    oHeaderCell.m_strName = "Channel";
+    oHeaderCell.m_nWidth  = 60;
+    oHeader.push( oHeaderCell );
+
+    // Header of 2nd column in table
+    oHeaderCell = new Object();
+    oHeaderCell.m_strName = "Target Link <div id='DIV_Action'></div>";
+    oHeaderCell.m_nWidth  = 210;
+    oHeader.push( oHeaderCell );
+
+    // Put the header in the table header field
+    oTable.oHeader = oHeader;
+
+    // Create the table rows array
+    oTable.m_oRows = new Array();
+
+    // Get the array of texts for the channel allocation column
+    var arTextualAllocated = G_allocUI.getTextualAllocations( strCardAddress );
+    
+    // Create the set of columns that are needed for this table.
+    arCol = new Array( arTextualAllocated );
+
+    // Define the set of clickable columns (cursor changes to a hand).
+    arColClickable = new Array( 0, 1 );
+
+    // Build the table based on the table header and the above set of columns
+    return G_allocUI.buildTableElements( oTable, arCol, arColClickable );
+}
+
+function getInfo( strAddress )
+{
+    clearTimeout(G_nPRICardMatrixTimerID);
+    G_nPRICardMatrixTimerID = setTimeout("getInfo('" + strAddress + "')",4000);
+}
+
+function onCustomCellClicked( strTable, nRow, nCol )
+{
+    alert( nRow + ":" + nCol );
+}
+function FillCardType( strType )
+{
+	var arTypeAddr = G_configInfo.getCardTypeAddresses( strType );
+   //alert( "arTypeAddr:" + arTypeAddr);        
+	if ( typeof( arTypeAddr ) != 'undefined' )
+	{		
+		G_arAddresses = G_arAddresses.concat( arTypeAddr );
+	}
+}
+function sortCardsAddresses()
+{
+ var nAddress = new Array();
+ for ( var i=0; i< G_arAddresses.length; i++ )
+ {
+    nAddress[i] = parseInt(G_arAddresses[i]);
+ } 
+ nAddress.sort();
+ G_arAddresses = nAddress;
+ 
+}
+function save()
+{
+document.getElementById("DIV_SaveConfig").innerHTML = "Saving...";
+var strPRIAdd = G_allocUI.m_strLastSelectedCardAddr;
+//UpdateCardBusLinks/I3#/A3b/G21.4,,,,,,,,,,,21.1|/A21/G3b.0,,,3b.1
+//                     #/A3b/G21,,,,,,,,,,,,,,,,,21/N,,,,,,,,,,,,|/A21/G3b,,,3b/N,,,
+var strCmd = "UpdateCardBusLinks /I7#";
+var strPRIMediaLinks = "/A" + strPRIAdd + "/G";
+var strPRII2CLinks = "#/A" + strPRIAdd + "/G";
+var strCellularMediaLinks ="";
+var strCellularrI2CLinks ="";
+
+var nPRIChannels = ( G_strT1Addr.indexOf( strPRIAdd ) > -1 ) ? 23:30; 	
+
+var nNumOfCellCards = G_arAddresses.length;
+var nCurCellCard=0;
+var nFromCh = document.getElementById("txtFrom").value;
+var nToCh   = document.getElementById("txtTo").value;
+var nCellChannel = 1; //1-4
+//loop for pri 
+for(var i=1; i<=nPRIChannels; i++)
+{
+    if (nCellChannel==5)
+    {
+     nCellChannel =1;
+     nCurCellCard++;     
+    }
+    if ( i > nToCh || i < nFromCh || nCurCellCard > nNumOfCellCards-1)
+    {
+        strPRIMediaLinks += ((i==nPRIChannels) ? "" : ",");
+        strPRII2CLinks   += ((i==nPRIChannels) ? getInvalidMsg(nPRIChannels) : ",");
+    }
+    else
+    {
+    strPRIMediaLinks      += (nCellChannel>4)? "": (   G_arAddresses[nCurCellCard] + "." + nCellChannel + ((i==nPRIChannels) ? "" : ",")  );
+    strPRII2CLinks        += (nCellChannel>4)? "": ( G_arAddresses[nCurCellCard] + ((i==nPRIChannels) ? "" : ",")  );
+   
+    nCellChannel++;
+     
+    }
+   
+}
+alert ( strPRIMediaLinks + " - " + strPRII2CLinks);
+//return
+//loop for call cards 
+nCurCellCard=0;
+nCellChannel = 1;
+
+var nPriChannel = 1;
+nCurCellCard = 0;
+while ( nCurCellCard<G_arAddresses.length )
+{
+    strCellularMediaLinks += "|/A" + G_arAddresses[nCurCellCard] + "/G";
+    strCellularrI2CLinks   += "|/A" + G_arAddresses[nCurCellCard] + "/G";
+    for (var nCellChannel=0; nCellChannel<4; nCellChannel++)
+        {  
+            if ( nPriChannel >nPRIChannels || nPriChannel > nToCh || nPriChannel < nFromCh )
+            {
+                strCellularMediaLinks += ((nCellChannel==3) ? "" : ","); 
+                strCellularrI2CLinks  += ((nCellChannel==3) ? "" : ","); 
+                //nCurCellCard =  770;              
+            }
+            else
+            {
+                strCellularMediaLinks +=  strPRIAdd + "."  + nPriChannel + ((nCellChannel==3) ? "" : ","); 
+                strCellularrI2CLinks  +=  strPRIAdd + ((nCellChannel==3) ? "" : ",");        
+            }
+            nPriChannel++;
+            
+           
+        }
+        
+        strCellularrI2CLinks   += getInvalidMsg(4);
+        nCurCellCard++;        
+}
+
+alert (  strCellularMediaLinks + " - " + strCellularrI2CLinks);
+//return;
+
+strCmd += strPRIMediaLinks + strCellularMediaLinks + strPRII2CLinks + strCellularrI2CLinks;
+alert(strCmd);
+parent.frames[0].SendCommand( strCmd );
+
+}
+function getInvalidMsg(n)
+{
+//alert( "n=" + n);
+    var strMsg = "/N"
+    for(var i=0; i<n-1; i++)
+        strMsg += ","; 
+    return strMsg;        
+}
+function getSettingPannel()
+{
+
+    var strBtn  = "<input type=\"button\" class=\"Button\" onclick=\"setMSNValues()\" ";
+    strBtn += "value=\"set\" style=\"width='30px'\">&nbsp&nbsp";
+    var strHTML = "<table CLASS='TableLight'><tr><td></td></tr>";
+    //txtFrom
+    strHTML += "<td class=\"PlanRow\">Fast connection to Cellular from channel</td><td>" + "<input id='txtFrom' type=\"Text\" class=\"PlanRow\"    align='center' ";
+    strHTML += "value=\"1 \" style=\"width='30px'\" align=\"center\">" + "</td>"; 
+    //txtTo
+    strHTML += "<td class=\"PlanRow\">to channel</td><td>" + "<input  id='txtTo'type=\"Text\" class=\"PlanRow\"    align='center' ";
+    strHTML += "value=\" \" style=\"width='30px'\" align=\"center\">" + "</td>"; 
+    //save btn
+    strBtn  = "<input type=\"button\" class=\"Button\" onclick=\"save()\" ";
+    strBtn += "value=\"save\" style=\"width='30px'\">";
+    strHTML += "<td>"+strBtn+"</td>";
+    strHTML += "</tr></table><HR><br><div id=\"DIV_SaveConfig\"></div><br>";    
+    return strHTML;
+}
+</SCRIPT>
+
+<BODY onselectstart="return false;" ondragstart="return false;" onLoad="init()" bgcolor="white">
+<font size=4 face="Arial">PRI Media Matrix</font>
+<hr>
+
+<font face=Arial size=2>
+<div id="selectcard"></div>
+
+<div id="update_settings"></div>
+<br>
+
+
+<div id="DIV_MatrixTable">
+</div>
+
+<br>
+<div id="DIV_SaveConfig">
+</div>
+
+</font>
+
+</BODY>
+</HTML>

@@ -1,0 +1,11 @@
+<script>
+
+    var hmc = parent.frames[0].HMC;
+    var model_name = hmc.info.model_name;
+    if ( model_name.indexOf("HBN") == 0  || model_name.indexOf("HBS") == 0 || model_name.indexOf("HBD") == 0 ){
+        hmc.load(this, '/cb/whitelist/acr_nps/');
+    }
+    else{
+        hmc.load(this, '/nps');
+    }
+</script>

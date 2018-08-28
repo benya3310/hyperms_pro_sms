@@ -1,0 +1,102 @@
+<HTML>
+<STYLE type=text/css>TABLE {
+	BORDER-RIGHT: #000000 1px solid; BORDER-TOP: #000000 1px solid; BORDER-LEFT: #000000 1px solid; BORDER-BOTTOM: #000000 1px solid; border-spacing: 0px; cell-spacing: 0px
+}
+TD {
+	PADDING-RIGHT: 0.5em; PADDING-LEFT: 0.5em; FONT-SIZE: 10pt; PADDING-BOTTOM: 2px; PADDING-TOP: 2px; FONT-FAMILY: Arial, Helvetica, sans-serif; WHITE-SPACE: nowrap
+}
+</STYLE>
+<SCRIPT language=javascript src="../utils/utilfuncs.js"></SCRIPT>
+<SCRIPT>
+function init()
+{
+    getGWConfig();
+}
+
+function OnData( strMessage )
+{
+    var strCommand = new String( strMessage );
+    var strParam = strCommand.split( " " );
+    var strSection;
+    
+    var packStr = new PacketString( strParam[1] );
+    
+    switch ( strParam[0] )
+    {
+		case "OutCallsConfigReply":
+		{
+			var strNumMappings = new String( packStr.getSection( "g" ) );
+			var arNumMappings  = strNumMappings.split( "," );
+
+		}
+		
+        case "GWError":
+        {
+            alert( "Got error message:" + strMessage );
+            break;
+        }
+        
+        case "GWConfigInfo":
+        {
+			var objSelect = G_configInfo.getSelectCardHTML( packStr, "MG.0", "Select Media Gateway card", "onSelectCard" );
+            var strHTML = objSelect.m_strHTML;
+			var strSelCard = objSelect.m_strSelCard;
+            document.getElementById("selectcard").innerHTML = strHTML;
+            onSelectCard( strSelCard );
+            break;
+         }
+        
+        default:
+        {
+            //alert( "Got unknown message:" + strMessage );
+            break;
+        }
+    }
+}
+
+function getGWConfig()
+{
+    parent.frames[0].SendCommand( "GetGWConfig" );
+}
+
+function onSelectCard( strCard )
+{
+    var nSlot = G_configInfo.calcSlotNumber( strCard );
+
+    document.getElementById("update_settings").innerHTML = "Selected card at slot " + nSlot;
+    getInfo( strCard );
+}
+
+var G_nMGWStatusTimerID;
+
+function getInfo( strAddress )
+{
+    clearTimeout(G_nMGWStatusTimerID);
+    parent.frames[0].SendCommand( "GetOutCallsConfig /I124/A" + strAddress );
+    var strFunc = "getInfo('" + strAddress + "')";
+    G_nMGWStatusTimerID = setTimeout(strFunc,2000);
+}
+
+function getTableHTML( strTableID, strCardAddress )
+{
+	var strHTML = "";
+
+	return strHTML;
+}    
+
+</SCRIPT>
+
+<BODY onselectstart="return false;" onLoad="init()" bgcolor="white">
+<font size=4 face="Arial">VoIP Outgoing Calls</font>
+<hr>
+<font face=Arial size=2>
+<div id="selectcard"></div>
+
+<div id="DIV_Status" style="border-style: solid; border-width: thin; width: 350px; height: 300px; overflow: auto;"></div>
+
+<div id="update_settings">No card selected</div>
+<br>
+</font>
+
+</BODY>
+</HTML>

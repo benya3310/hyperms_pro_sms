@@ -1,0 +1,74 @@
+<HTML>
+<HEAD>
+<TITLE>Cellular Gateways - SMS Routing</TITLE>
+<link type="text/css" href="../default.css" rel="stylesheet">
+<SCRIPT language=javascript src="../utils/utilfuncs.js"></SCRIPT>
+<SCRIPT language=javascript src="../utils/rpc.js"></SCRIPT>
+<script id="scriptreceiver"></script>
+<SCRIPT>
+
+var G_nSmsChnlsTimerID;
+var g_rpc = new RPC();
+var g_mapGroupSet; // set of existing groups;
+
+/**********************************************************************************************/
+function getSimGroups()
+/**********************************************************************************************/
+{
+    var objParams = { "method":"getGroups" };
+   	var strServerName	= parent.frames[0].getServerIP();
+    var strURL = "http://" + strServerName + "/cb/SIMGroups.php";
+    g_rpc.invoke( strURL, objParams, "onSimGroupsReply", 4000  );
+}
+
+/**********************************************************************************************/
+function onSimGroupsReply( objData )
+/**********************************************************************************************/
+{
+    if ('error' in objData) {
+        var html  = '<div class="alert">';
+            html += '  <h1 class="message">' + objData.error + '</h1>';
+            html += '  <p class="info">' + objData.info + '</p>';
+            html += '</div>';
+        document.body.innerHTML = html;
+        return;
+    }
+
+    strGroups = "";
+    objGroups = objData.sim_config;
+    //alert( toJSON( objGroups ) );
+
+    g_mapGroupSet = new Object();
+    for (var strAddr in objGroups)
+    {
+        var objGroup = objGroups[strAddr];
+        //alert( toJSON( objGroup ) );
+        if ( objGroup.group != null )
+        {
+            g_mapGroupSet[ objGroup.group ] = "x";
+        }
+    }
+    var nCount = 0;
+    strGroups = "";
+    for (var strGroup in g_mapGroupSet)
+    {
+        if (strGroups != "")
+        {
+            strGroups += ","
+        }
+        strGroups += strGroup;
+    }
+    
+	var strServerName	= parent.frames[0].getServerIP();
+	var strPassword		= parent.frames[0].getPassword();
+	var strLoc = "http://" + strServerName + "/cb/whitelist/rules.php?password=" + strPassword + "&IP=" + strServerName + "&groups=" + strGroups + "&type=sms";
+    document.location.href = strLoc;
+}
+
+
+</SCRIPT>
+
+<BODY onLoad="getSimGroups()" bgcolor="white" onselectstart="return false;" ondragstart="return false;">
+
+</BODY>
+</HTML>

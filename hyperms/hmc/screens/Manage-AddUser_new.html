@@ -1,0 +1,133 @@
+<html>
+<head></head>
+<STYLE type=text/css>TABLE {
+	BORDER-RIGHT: #000000 0px solid; BORDER-TOP: #000000 0px solid; BORDER-LEFT: #000000 0px solid; BORDER-BOTTOM: #000000 0px solid; border-spacing: 0px;
+}
+TD {
+	PADDING-RIGHT: 0.5em; PADDING-LEFT: 0.5em; FONT-SIZE: 10pt; PADDING-BOTTOM: 2px; PADDING-TOP: 2px; FONT-FAMILY: Arial, Helvetica, sans-serif; WHITE-SPACE: nowrap
+}
+</STYLE>
+<SCRIPT language=javascript src="../utils/utilfuncs.js"></SCRIPT>
+<SCRIPT>
+var G_arVPNGroups = new Array();
+var G_strGroups = "";
+
+function init()
+{
+	document.getElementById( "DIV_STATUS" ).innerHTML = "Querying VPN groups...";
+    parent.frames[0].SendCommand( "VPNGroups /I345" );
+}
+
+function OnData( strMessage )
+{
+    var strCommand = new String( strMessage );
+    var arParam = strCommand.split( " " );
+    var strSection;
+    
+    var packStr = new PacketString( arParam[1] );
+    
+    switch ( arParam[0] )
+    {
+        case "VPNGroupsReply":
+        {
+			var strGroups = packStr.getSection( "g" );
+			if ( strGroups != "" )
+			{
+				G_arVPNGroups = strGroups.split( "," );
+			}
+			renderForm();
+			//submitForm();
+		}
+	}
+}
+
+function renderForm()
+{
+	document.getElementById( "DIV_STATUS" ).innerHTML = "";
+	var strHTML = '<form name="input"><input type="hidden" name="password"></input><table bgcolor="#efefef">';
+	G_strGroups += 	'<tr ALIGN="LEFT">';
+	G_strGroups += 	'<td ALIGN="RIGHT">VPN Group</td><td><select name="vpngroup">';
+	G_strGroups += 	'<option>General</option>';
+	for (var i=0; i < G_arVPNGroups.length; i++)
+	{
+		G_strGroups += 	'<option>' + G_arVPNGroups[ i ] + '</option>';
+	}
+	G_strGroups += '</select></td>';
+	G_strGroups += 	'</tr>';	
+	strHTML += G_strGroups + '</table></form>';
+	document.getElementById( "DIV_ADDUSERFORM" ).innerHTML = strHTML;
+		
+}
+
+var G_bAllowLine = 0;
+
+function onSelectLineID()
+{
+	var objLineID = document.getElementById( "id_lineID" );
+	objLineID.style.visibility = "visible";
+}
+
+function onSelectCLI()
+{
+	var objLineID = document.getElementById( "id_lineID" );
+	objLineID.style.visibility = "hidden";
+}
+
+function onAllowLine()
+{
+	var objRadioLine = document.getElementById( "radioLine" );
+	var objRadioCLI = document.getElementById( "radioCLI" );
+	var objAccessNum = document.getElementById( "id_accessNumber" );
+	var objLineID = document.getElementById( "id_lineID" );
+
+	if ( G_bAllowLine == 0 )
+	{
+		objRadioLine.disabled = false;
+		objRadioCLI.disabled = false;
+		objAccessNum.style.visibility = "visible";
+		if ( objRadioLine.checked )
+		{
+			objLineID.style.visibility = "visible";
+		}
+		G_bAllowLine = 1;
+	}
+	else
+	{
+		objRadioLine.disabled = true;
+		objRadioCLI.disabled = true;
+		objAccessNum.style.visibility = "hidden";
+		objLineID.style.visibility = "hidden";
+		G_bAllowLine = 0;
+	}
+	
+
+}
+
+function submitForm()
+{
+	// var strServerAddr = "127.0.0.1";
+	var strPassword		= parent.frames[0].getPassword();
+	var strServerAddr	= parent.frames[0].getServerIP();
+	document.input.method = "get";
+	document.input.password.value = strPassword;
+	document.input.action = "http://" + strServerAddr + "/cb/adduser.php?VPNGroups=" + G_strGroups;
+	document.input.submit();
+}
+
+function clickIt( obj, strFile, bPressed, nDebug )
+{
+    obj.bPressed = bPressed;
+    var str = 'document.all.' + obj.name + '.src = "' + strFile + '"';
+    //if (nDebug==1) alert(str);
+    eval( str );
+}
+</SCRIPT>
+<body onLoad=init(); ondragstart="return false;">
+<font size=4 face="Arial">New User Information</font>
+<hr>
+<font face="Arial" size=2>
+<div id="DIV_ADDUSERFORM"></div>
+<div id="DIV_STATUS"></div>
+</font>
+</body>
+</html>

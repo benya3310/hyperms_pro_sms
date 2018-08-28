@@ -1,0 +1,428 @@
+<HTML>
+<HEAD><TITLE>Cellular Gateways - Configuration</TITLE></HEAD>
+<STYLE type=text/css>
+TABLE {
+	BORDER-RIGHT: #000000 1px solid; BORDER-TOP: #000000 1px solid; BORDER-LEFT: #000000 1px solid; BORDER-BOTTOM: #000000 1px solid; border-spacing: 0px; cell-spacing: 0px
+}
+TD {
+	PADDING-RIGHT: 0.5em; PADDING-LEFT: 0.5em; FONT-SIZE: 10pt; PADDING-BOTTOM: 2px; PADDING-TOP: 2px; FONT-FAMILY: Arial, Helvetica, sans-serif; WHITE-SPACE: wrap
+}
+.ad_td{
+     FONT-SIZE: 10pt; PADDING-BOTTOM: 2px; PADDING-TOP: 2px; FONT-FAMILY: Arial, Helvetica, sans-serif; WHITE-SPACE: wrap
+}
+select,option {
+ font-family: Verdana, Arial, Serif;
+ font-size: 10pt;
+ color: #000000;
+}
+.tb_no_border{
+    border:0px;
+}
+legend {
+  padding: 0.2em 0.5em;  
+  color:black;
+  font-size:100%;
+  font-weight:bold;
+  text-align:left;
+  }
+</STYLE>
+<SCRIPT language=javascript src="../utils/utilfuncs.js"></SCRIPT>
+<SCRIPT language=javascript src="../utils/alloc_logic.js"></SCRIPT>
+<SCRIPT>
+var G_nTotalParams;
+var G_strParam_g;
+var G_strParam_P;
+var G_strParam_i;
+//g Param Class
+var G_gParam = {
+    a_val   : "",
+    bb_val  : "",
+    cc_val  : "",    
+    ee_val  : "",
+    dd_val  : "",
+    init: function ( g_param_str )
+    {
+        var arr_g    = g_param_str.split(',');
+        this.a_val    = arr_g[0];
+        this.bb_val   = arr_g[1];
+        this.cc_val   = arr_g[2];
+        var de_vals  = arr_g[3].replace(/\'/g,'');        
+        if ( de_vals.length <1 )
+        {
+            this.dd_val   = null;
+            this.ee_val   = null;
+        }
+        else
+        {
+            de_vals  = de_vals.split(';');            
+            this.dd_val   = de_vals[0];
+            this.ee_val   = de_vals[1];
+        }
+        //this.print();
+    },
+    print: function ()
+    {
+        var str = "a_val=" + this.a_val;
+        str += "\nbb_val=" + this.bb_val;
+        str += "\ncc_val=" + this.cc_val;
+        str += "\nee_val=" + this.ee_val;
+        str += "\ndd_val=" + this.dd_val;
+        alert (str);
+    }
+    
+}
+var G_arIEs = new Array;
+G_arIEs[ "00" ] = "UNUSED";
+G_arIEs[ "11" ] = "SETUP";
+G_arIEs[ "12" ] = "ALERTING";
+G_arIEs[ "10" ] = "PROCEEDING";
+G_arIEs[ "13" ] = "CONNECT";
+G_arIEs[ "14" ] = "DISCONNECT";
+
+var G_strSelCardType;
+var G_strLastSelectedCard;
+var G_nPRISettingsTimerID;
+///////////////////////////////////////////////////////////////////////////////////////////////
+function getIEIndexbyVal(val)
+{   
+    var idx = 0;
+    for(key in G_arIEs){
+      var value = G_arIEs[key];
+      if(value == val){
+        return idx;
+      }
+      idx++;
+    }
+    return 0;
+}
+///////////////////////////////////////////////////////////////////////////////////////////////
+function init()
+{
+    getGWConfig();
+}
+///////////////////////////////////////////////////////////////////////////////////////////////
+function getGWConfig()
+{
+    parent.frames[0].SendCommand( "GetGWConfig" );
+}
+///////////////////////////////////////////////////////////////////////////////////////////////
+function onSelectCard( strCard, strCardType )
+{
+	if ( strCard == null )
+	{
+		return;
+	}
+    var nSlot = G_configInfo.calcSlotNumber( strCard );
+    G_strLastSelectedCard = strCard;
+	clearGUI();		
+    getInfo( strCard );
+    document.getElementById("update_settings").innerHTML = getSelCardText( nSlot, strCardType );
+}
+///////////////////////////////////////////////////////////////////////////////////////////////
+function saveAdvancedPRIConfig()
+{
+    var el = document.getElementById("a_val_chk");
+    var a  = (el.checked) ? "0":"1";
+    el     = document.getElementById("bb_combo");
+    var bb = el.options[el.selectedIndex].value;
+    var cc = G_gParam.cc_val;
+    var dd = document.getElementById("dd_val_txt").value;
+    var ee = document.getElementById("ee_val_txt");
+    var ei     = document.getElementById("i_val_chk");
+    
+    var strCommand = "SendGenericPacket 9b:/A";
+   
+    strCommand += G_strLastSelectedCard;
+    strCommand += "/I25/G"+ a + "," + bb + ","+ cc + ",'"+dd+"'";
+    
+    if ( ee != null )
+        strCommand += ";'" + ee.value + "'";   
+    
+    if ( G_strParam_P != null )
+        strCommand += "/P" + G_strParam_P;    
+    
+    if ( ei != null)
+    {
+        var i = (ei.checked) ? "1":"0";
+        strCommand += "/i" + i;
+    }
+    //  /Ga,bb,cc,'dd';'ee'/Pf,gg,hhhh/ij
+    //alert(strCommand);
+    parent.frames[0].SendCommand( strCommand );
+    document.getElementById("DIV_SaveConfig").innerHTML = "Saving configuration...";
+}
+///////////////////////////////////////////////////////////////////////////////////////////////
+function sendSaveSettingsCmd()
+{
+    var strCommand = "SendGenericPacket 82:/A";
+    strCommand += G_strLastSelectedCard;
+    strCommand += "/I24";
+    parent.frames[0].SendCommand( strCommand );
+    document.getElementById("DIV_SaveConfig").innerHTML += "......";
+}
+///////////////////////////////////////////////////////////////////////////////////////////////
+function getAddress( strCards, strCardType )
+{  
+    if ( strCards.indexOf(strCardType) ==-1)
+            return "";
+
+    var str = strCards.substring(strCards.indexOf(strCardType));    
+    if ( str.indexOf("|") > -1)
+        str = str.substring(0,str.indexOf("|"));
+    return str;    
+}
+///////////////////////////////////////////////////////////////////////////////////////////////
+function OnData( strMessage )
+{   
+    //debug(strMessage);
+    var strCommand = new String( strMessage );
+    var strParam = strCommand.split( " " );
+    var strSection;
+    var packStr = new PacketString( strParam[1] );    
+    switch ( strParam[0] )
+    {
+        
+        case "GWConfigInfo":
+        {
+			var objSelect = G_configInfo.getSelectCardHTML( packStr, "E1.0,T1.0", "Select PRI card", "onSelectCard" );			
+			var strCards = packStr.getSection( "c" );          
+			G_strSelCardType = objSelect.m_strSelCardType;
+            var strHTML = objSelect.m_strHTML;
+			var strSelCard = objSelect.m_strSelCard;
+            document.getElementById("selectcard").innerHTML = strHTML;
+            if ( strSelCard != null )
+            {
+                onSelectCard( strSelCard, G_strSelCardType );
+            }
+            else
+            {
+                document.getElementById("alert").style.visibility = "hidden";
+            }
+            
+            break;
+        }
+        
+        case "Ack":
+        {
+            //if ack from E1SetConnParams (I23) send save commnad
+            var strID = packStr.getSection( "I" );
+            switch (strID)
+            {
+                case "25":
+                    sendSaveSettingsCmd();
+                break;
+                case "24":
+                    document.getElementById("DIV_SaveConfig").innerHTML = "Configuration saved.";
+                break;
+            }
+            break;
+        }
+        
+        case "GWError":
+        {
+            document.getElementById("DIV_SaveConfig").innerHTML = "Error saving configuration.";
+            break;
+        }
+        case "GenericReply":
+        {
+            if (  packStr.getSection( "#" ) == "9b" )
+            {
+                //advanced settings reply
+                clearTimeout(G_nPRISettingsTimerID);
+                G_strParam_g = packStr.getSection( "g" );
+                G_strParam_P = packStr.getSection( "P" );
+                G_strParam_i = packStr.getSection( "i" );
+                G_gParam.init(G_strParam_g);
+                buildUI();
+            }
+        }
+        default:
+        {
+            // Send this to TCPServer log file ? internal log file ?
+            break;
+        }
+    }
+}
+///////////////////////////////////////////////////////////////////////////////////////////////
+function buildUI()
+{
+    ///#9b/@AA/Ixxx/ga,bb,cc,'dd';'ee'/Pf,gg,hhhh/ij
+    var strHTML = "<table class=ad_td>";
+    //Transparent passing of Q.931
+	strHTML += "<tr><td><b>Transparent passing of Q.931 IEs:</b></td>";
+    strHTML += "<td><input id='a_val_chk' onClick='updateSaveUI();' type='checkbox' ";
+    strHTML += ( G_gParam.a_val == '0') ? "checked />" : "/>";
+    strHTML += "</td></tr>";
+    
+    //"Replace ALERTING with PROGRESS" - checkbox, based on the combined values of bb and cc. 
+    //Shown as set if bb is 12 and cc is 08. 
+    //Manually ticking it will replace the message type in the above item with 12 (forcing bb to this value) and set cc to 08.
+    strHTML += "<tr><td><b>Replace ALERTING with PROGRESS:</b></td>";
+    strHTML += "<td><input id='bb_cc_val' onclick='updateAlerting(this);' type='checkbox' ";
+    strHTML += ( G_gParam.bb_val == '12' && G_gParam.cc_val == '08') ? "checked />" : "/>";
+    strHTML += "</td></tr>";
+       
+    if ( G_strParam_i != null )
+    {
+        //Force sending CONNECT ACK on outbound PRI calls
+        //checkbox, depends on j. Ticked=1, unticked=0
+        strHTML += "<tr><td><b>Force CONNECT ACK on outbound calls:</b></td>";
+        strHTML += "<td><input id='i_val_chk' onClick='updateSaveUI();' type='checkbox' ";
+        strHTML += ( G_strParam_i == '1') ? "checked />" : "/>";
+        strHTML += "</td></tr>";
+    }
+    
+    if ( G_gParam.ee_val != null )
+    {
+        //Custom Q.931 channel ID string
+        //text box which accepts a string of chars, 0 thru 9 and a thru f (as well as A thru F), corresponding to field ee.
+        strHTML += "<tr><td><b>Custom Q.931 channel ID string:</b></td>";
+        strHTML += "<td><input type='text' size='13' id='ee_val_txt'  value='" + G_gParam.ee_val+ "' onClick='updateSaveUI()'; onKeyUp='validateValueKeyPress(this);' onKeyDown='validateValueKeyPress(this);'>";
+        strHTML += "</td></tr>";
+    }
+    
+    //Add IEs to sent Q.931 messages
+    strHTML += "<tr><td colspan=2><fieldset><legend>Add IEs to sent Q.931 messages:</legend>";
+    strHTML += "<table class='tb_no_border'>";
+    //1.Message Type
+    strHTML += "<tr><td  width='260px'>Message Type:</td>";
+    strHTML += "<td>" + getIEsCombo(G_gParam.bb_val);
+    strHTML += "</td></tr>";
+    //2.Information Elements to Add
+    strHTML += "<tr><td>Information Elements to Add:</td>";
+    var dd_val = (G_gParam.dd_val == null) ? "" : G_gParam.dd_val;
+    strHTML += "<td><input size='13'  type='text' id='dd_val_txt' value='" + dd_val+ "' onClick='updateSaveUI();' onKeyUp='validateValueKeyPress(this);' onKeyDown='validateValueKeyPress(this);'>";
+    strHTML += "</td></tr>";
+    strHTML += "</table>";    
+    strHTML += "</fieldset></td></tr>";
+    
+    
+    strHTML += "</table>";
+
+    document.getElementById("DIV_GeneralSettings").innerHTML = strHTML
+}
+///////////////////////////////////////////////////////////////////////////////////////////////
+function validateValueKeyPress(eeValue)
+{
+    
+     //var eeValue = document.getElementById("ee_val");
+     var str = eeValue.value;
+     var newchar = str.charAt( str.length-1 );
+     if ( isNaN(newchar) )
+     {
+        newchar = newchar.toLowerCase();
+        if (/[a-f]/.test(newchar) == false)
+        {            
+            str = str.slice(0, -1)
+            eeValue.innerText = str;
+        }
+     }
+     
+}
+///////////////////////////////////////////////////////////////////////////////////////////////
+function updateAlerting(cb)
+{   
+    var bb = document.getElementById("bb_combo");   
+    if (cb.checked)
+    {
+        //set ie combo ALERTING        
+        bb.selectedIndex = getIEIndexbyVal('ALERTING');
+        //set bb 12 and cc 08
+        G_gParam.bb_val = '12';
+        G_gParam.cc_val = '08';
+    }
+    else
+    {
+        //set ie combo UNUSED            
+        bb.selectedIndex = getIEIndexbyVal('UNUSED');
+        //set bb 00 and cc 00
+        G_gParam.bb_val = '00';
+        G_gParam.cc_val = '00';
+    }    
+    updateSaveUI();
+}
+///////////////////////////////////////////////////////////////////////////////////////////////
+function getIEsCombo( type )
+{
+	var strHTML = "<select onChange='onchangeIEsCombo(this)' id='bb_combo' >";
+	
+	for (var strKey in G_arIEs)
+	{
+		strHTML += "<option value='" + strKey + "' "
+		if ( strKey == type )
+		{
+			strHTML += "selected ";
+		}
+		strHTML += ">" + G_arIEs[strKey] + "</option>";
+	}
+	
+	strHTML += "</select>"
+	return strHTML;
+}
+///////////////////////////////////////////////////////////////////////////////////////////////
+function onchangeIEsCombo(combo)
+{
+    var idx = combo.options[combo.selectedIndex].value;
+    var cb  = document.getElementById("bb_cc_val");
+    if ( idx != '12' ) //ALERTING
+    {
+        cb.checked =  false;
+        G_gParam.cc_val = '00';
+    }
+    updateSaveUI();
+}
+///////////////////////////////////////////////////////////////////////////////////////////////
+function updateSaveUI()
+{
+    var strSave = utils_getButtonHTML( "saveAdvancedPRIConfig()", "SaveSettings.jpg" );
+    document.getElementById("DIV_SaveConfig").innerHTML = strSave;
+}
+///////////////////////////////////////////////////////////////////////////////////////////////
+function getInfo( strAddress )
+{
+    var strCommand = "SendGenericPacket 9b:/A";
+    strCommand += strAddress;
+    strCommand += "/I22/Q";
+    parent.frames[0].SendCommand( strCommand );
+    G_nPRISettingsTimerID = setTimeout("getInfo('" + strAddress + "')",4000);
+}
+///////////////////////////////////////////////////////////////////////////////////////////////
+function clearGUI()
+{
+    document.getElementById("update_settings").innerHTML = "";
+	document.getElementById("DIV_GeneralSettings").innerHTML = "";
+	document.getElementById("DIV_SaveConfig").innerHTML = "";
+}
+function debug(str)
+{
+    document.getElementById("DIV_Debug").innerHTML = str;
+}
+</SCRIPT>
+
+<BODY onLoad="init()" onselectstart="return false;" bgcolor="white" ondragstart="return false;">
+<font size=4 face="Arial">PRI Advanced Settings</font>
+<hr>
+
+<font face=Arial size=2>
+<div id="selectcard"></div>
+<br>
+
+
+<div id="update_settings"></div>
+<br>
+
+
+<div id="DIV_GeneralSettings">
+</div>
+
+<br>
+<div id="DIV_SaveConfig">
+</div>
+<br>
+<div id="DIV_Debug">
+</div>
+
+</font>
+
+</BODY>
+</HTML>

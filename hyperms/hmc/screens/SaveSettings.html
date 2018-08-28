@@ -1,0 +1,68 @@
+<HTML>
+<STYLE type=text/css>TABLE {
+	BORDER-RIGHT: #000000 1px solid; BORDER-TOP: #000000 1px solid; BORDER-LEFT: #000000 1px solid; BORDER-BOTTOM: #000000 1px solid; border-spacing: 0px; cell-spacing: 0px
+}
+TD {
+	PADDING-RIGHT: 0.5em; PADDING-LEFT: 0.5em; FONT-SIZE: 10pt; PADDING-BOTTOM: 2px; PADDING-TOP: 2px; FONT-FAMILY: Arial, Helvetica, sans-serif; WHITE-SPACE: nowrap
+}
+</STYLE>
+<BODY onselectstart="return false;" bgcolor="white">
+<script type="text/javascript">
+function saveConfig()
+{
+    parent.frames[0].SendCommand( "SaveSettings" );
+    document.getElementById("DIV_Status").innerHTML = "Saving all settings, this might take a few seconds...";
+}
+
+function OnData( strMessage )
+{
+    switch ( strMessage )
+    {
+        case "SaveOK":
+        {
+            document.getElementById("DIV_Status").innerHTML = "All settings saved successfully. Please wait 15 seconds before accessing cards.";
+            break;
+        }
+        
+        case "SaveError":
+        {
+            document.getElementById("DIV_Status").innerHTML = "Error occured during configuration save. Please check settings and retry.";
+            break;
+        }
+
+        default:
+        {
+            // Send this to TCPServer log file ? internal log file ?
+            //alert( "Got unknown message:" + strMessage + ":" );
+            break;
+        }
+    }
+}
+
+function clickIt( obj, strFile, bPressed, nDebug )
+{
+    obj.bPressed = bPressed;
+    var str = 'document.all.' + obj.name + '.src = "' + strFile + '"';
+    //if (nDebug==1) alert(str);
+    eval( str );
+}
+</script>
+
+<font size=4 face="Arial">Save Configuration</font>
+<hr>
+<font face="Arial" size=-1>
+Clicking the link below will permanently save all the configuration settings in the HyperGateway.
+This process might take up to 15 seconds.
+<br>
+<br>
+    <img name="bnext" src="./Up-SaveAllSettings.jpg"
+    onmousedown="clickIt( this, './Down-SaveAllSettings.jpg', 1 );"
+    onmouseup="if (this.bPressed==1) {clickIt( this, './Up-SaveAllSettings.jpg', 0 ); saveConfig(); }"
+    onMouseOver="style.cursor='hand'" 
+    onmouseout="clickIt( this, './Up-SaveAllSettings.jpg', 0 );">
+<br>
+<br>
+<u><b>Status</b></u>
+<div id="DIV_Status">Settings not yet saved.</div>
+</BODY>
+</HTML>

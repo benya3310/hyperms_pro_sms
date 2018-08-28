@@ -1,0 +1,683 @@
+<HTML>
+<HEAD><TITLE>Cellular Gateways - Configuration</TITLE></HEAD>
+<STYLE type=text/css>TABLE {
+	BORDER-RIGHT: #000000 1px solid; BORDER-TOP: #000000 1px solid; BORDER-LEFT: #000000 1px solid; BORDER-BOTTOM: #000000 1px solid; border-spacing: 0px; cell-spacing: 0px
+}
+TD {
+	PADDING-RIGHT: 0.5em; PADDING-LEFT: 0.5em; FONT-SIZE: 10pt; PADDING-BOTTOM: 2px; PADDING-TOP: 2px; FONT-FAMILY: Arial, Helvetica, sans-serif; WHITE-SPACE: nowrap
+}
+
+select,option {
+ width: 140px;
+ font-family: Verdana, Arial, Serif;
+ font-size: 10pt;
+ color: #000000;
+}
+</STYLE>
+<SCRIPT language=javascript src="../utils/utilfuncs.js"></SCRIPT>
+<SCRIPT language=javascript src="../utils/alloc_logic.js"></SCRIPT>
+<SCRIPT>
+var G_nTotalParams;
+var G_arParams;
+var G_arNewParams;
+
+var G_arCode2Name = new Array;
+G_arCode2Name[ "1000" ] = "EUROISDN";
+G_arCode2Name[   "33" ] = "FRANCE";
+G_arCode2Name[   "49" ] = "GERMANY ";
+G_arCode2Name[   "81" ] = "JAPAN";
+G_arCode2Name[  "852" ] = "HONG KONG";
+G_arCode2Name[    "1" ] = "USA and CANADA";
+G_arCode2Name[   "82" ] = "KOREA";
+G_arCode2Name[  "886" ] = "TAIWAN";
+
+var G_arVer2Name = new Array;
+G_arVer2Name[ "11" ] = "EUROISDN";
+G_arVer2Name[  "3" ] = "VN6";
+G_arVer2Name[  "4" ] = "1TR6";
+G_arVer2Name[ "16" ] = "QSIG"; //not supported
+G_arVer2Name[  "8" ] = "NORTEL DMS100";
+G_arVer2Name[ "20" ] = "NATIONAL ISDN 2";
+G_arVer2Name[ "23" ] = "AT&T 5ESS";
+G_arVer2Name[ "24" ] = "AT&T 4ESS";
+G_arVer2Name[  "9" ] = "NTT";
+G_arVer2Name[ "10" ] = "KDD";
+G_arVer2Name[ "17" ] = "HONG KONG";
+G_arVer2Name[ "25" ] = "KOREA";
+
+var G_T1Framing2Name = new Array();
+G_T1Framing2Name[ 0 ] = "ESF CRC6";
+G_T1Framing2Name[ 1 ] = "ESF";
+G_T1Framing2Name[ 2 ] = "F12";
+G_T1Framing2Name[ 3 ] = "F4";
+G_T1Framing2Name[ 4 ] = "F72";
+G_T1Framing2Name[ 5 ] = "ESF CRC6 JT";
+
+var G_strE1Addr;
+var G_strT1Addr;
+
+function init()
+{
+    getGWConfig();
+}
+
+function getGWConfig()
+{
+    parent.frames[0].SendCommand( "GetGWConfig" );
+}
+
+var G_strLastSelectedCard;
+var G_nPRISettingsTimerID;
+
+function onSelectCard( strCard, strCardType )
+{
+	if ( strCard == null )
+	{
+		return;
+	}
+    var nSlot = G_configInfo.calcSlotNumber( strCard );
+    G_strLastSelectedCard = strCard;
+	clearGUI();		
+    getInfo( strCard );
+    document.getElementById("update_settings").innerHTML = getSelCardText( nSlot, strCardType );
+}
+
+function savePRIConfig()
+{
+	var nPLLSync		= document.getElementById("PLLSync").sel;
+	var nRemote			= document.getElementById("RemoteDevice").sel;
+	
+    var strSet = "/G";
+    strSet += nPLLSync;
+    strSet += ",";
+    strSet += nRemote;
+
+	if ( document.getElementById("LineCoding") != null )
+	{
+		strSet += ",";
+		
+		var nLineCoding		= document.getElementById("LineCoding").sel;
+		var nFramingType	= document.getElementById("FramingType").sel;
+		var nLongHaul		= document.getElementById("LongHaul").sel;
+	
+		if ( nLineCoding != -1 )
+		{
+			strSet += nLineCoding;
+			strSet += ",";
+		}
+		
+		if ( nFramingType != -1 )
+		{
+			strSet += nFramingType;
+			strSet += ",";
+		}
+		
+		if ( nLongHaul != -1 )
+		{
+			strSet += nLongHaul;
+		}
+	}
+
+	var strNewParams = "";
+	
+	if ( G_nTotalParams >= 6 )
+	{
+		var objInboundDialMethod = document.getElementById("InboundDialMethod");
+		if ( objInboundDialMethod != null )
+		{
+			var nInboundDialMethod	= objInboundDialMethod.sel;
+			strSet += "," + nInboundDialMethod;
+
+			if ( G_nTotalParams >= 7 )
+			{
+				var objOutboundDialMethod = document.getElementById("OutboundDialMethod");
+				if ( objOutboundDialMethod != null )
+				{
+					var nOutboundDialMethod	= objOutboundDialMethod.sel;
+					strSet += "," + nOutboundDialMethod;
+				}
+			}
+			
+			strNewParams = "/P" + document.getElementById("country").value;
+			strNewParams += "," + document.getElementById("isdnver").value;
+		}
+	}
+	
+    var strCommand = "E1SetConnParams /A";
+    strCommand += G_strLastSelectedCard;
+    strCommand += "/I23";
+    strCommand += strSet;
+	strCommand += strNewParams;
+	
+    parent.frames[0].SendCommand( strCommand );
+
+    document.getElementById("DIV_SaveConfig").innerHTML = "Saving configuration...";
+}
+function sendSaveSettingsCmd()
+{
+    var strCommand = "SendGenericPacket 82:/A";
+    strCommand += G_strLastSelectedCard;
+    strCommand += "/I24";
+    parent.frames[0].SendCommand( strCommand );
+    document.getElementById("DIV_SaveConfig").innerHTML += "......";
+}
+var G_strSelCardType;
+function getAddress( strCards, strCardType )
+{  
+    if ( strCards.indexOf(strCardType) ==-1)
+            return "";
+
+    var str = strCards.substring(strCards.indexOf(strCardType));    
+    if ( str.indexOf("|") > -1)
+        str = str.substring(0,str.indexOf("|"));
+    return str;    
+}
+function OnData( strMessage )
+{
+    var strCommand = new String( strMessage );
+    var strParam = strCommand.split( " " );
+    var strSection;
+    
+    var packStr = new PacketString( strParam[1] );
+    
+    switch ( strParam[0] )
+    {
+        case "GWConfigInfo":
+        {
+			var objSelect = G_configInfo.getSelectCardHTML( packStr, "E1.0,T1.0", "Select PRI card", "onSelectCard" );			
+			var strCards = packStr.getSection( "c" );           
+			G_strE1Addr =  getAddress( strCards, "E1.0" );//strCards.substring( strCards.indexOf("E1") ) ;						
+			G_strT1Addr =  getAddress( strCards, "T1.0" );//strCards.substring(strCards.indexOf("T1"),strCards.indexOf("|",strCards.indexOf("T1")));					
+			G_strSelCardType = objSelect.m_strSelCardType;
+            var strHTML = objSelect.m_strHTML;
+			var strSelCard = objSelect.m_strSelCard;
+            document.getElementById("selectcard").innerHTML = strHTML;
+            if ( strSelCard != null )
+            {
+                onSelectCard( strSelCard, G_strSelCardType );
+            }
+            else
+            {
+                document.getElementById("alert").style.visibility = "hidden";
+            }
+            
+            break;
+        }
+        case "GenericReply":
+        {        	
+        	var strID = packStr.getSection( "I" );
+            switch (strID)
+            {
+                case "21":                	
+                	var card_serial = packStr.getSection( "g" ).substring(0,3);
+                	var skip_qsig = (card_serial === "001") ? false :true;
+                	//alert("card:"+card_serial+" skip:"+skip_qsig);
+                	displayPRIParamTable( G_arParams, G_arNewParams, skip_qsig );
+                	break;                
+            }
+        }
+        case "Ack":
+        {
+            //if ack from E1SetConnParams (I23) send save commnad
+            var strID = packStr.getSection( "I" );
+            switch (strID)
+            {
+                case "23":
+                    sendSaveSettingsCmd();
+                break;
+                case "24":
+                    document.getElementById("DIV_SaveConfig").innerHTML = "Configuration saved.";
+                break;
+            }
+            break;
+        }
+        
+        case "GWError":
+        {
+            document.getElementById("DIV_SaveConfig").innerHTML = "Error saving configuration.";
+            break;
+        }
+
+        case "E1ConnParamsReply":
+        {
+            clearTimeout(G_nPRISettingsTimerID);
+            var strInfo = packStr.getSection( "g" );
+            var arParam = strInfo.split( "," );
+			var arNewParam = null;
+			var strNewParams = packStr.getSection( "i" );
+			if ( strNewParams != null )
+			{
+				arNewParam = strNewParams.split( "," );
+			}			           
+            G_arParams = arParam;
+			G_arNewParams  = arNewParam;			
+            sendCardSerialCmd();             
+        }
+        
+        default:
+        {
+            // Send this to TCPServer log file ? internal log file ?
+            break;
+        }
+    }
+}
+function sendCardSerialCmd()
+{
+    var strCommand = "SendGenericPacket 53:/A";
+    strCommand += G_strLastSelectedCard;
+    strCommand += "/I21";
+    parent.frames[0].SendCommand( strCommand );        
+}
+function getExtraParamsT1( strLineCoding, strFramingType )
+{
+	strHTML = "<tr sel=-1 id='LineCoding'><td><b>Line Coding</b></td>";
+	
+	strHTML += "<td><input type='radio' name='f1'";
+	if ( strLineCoding == "0" )
+	{
+		strHTML += "checked ";
+	}
+	strHTML += "onClick='updateObjSel(this,0);'>B8ZS</td>";
+	
+	strHTML += "<td><input type='radio' name='f1'";
+	if ( strLineCoding == "1" )
+	{
+		strHTML += "checked ";
+	}
+	strHTML += "onClick='updateObjSel(this,1);'>AMI</td>";
+	
+	strHTML += "<td><input type='radio' name='f1'";
+	if ( strLineCoding == "2" )
+	{
+		strHTML += "checked ";
+	}
+	strHTML += "onClick='updateObjSel(this,2);'>NRZ</td>";
+		
+	strHTML += "</tr>";
+	
+	///////////////////////////////////////////////////////////////////////////////////////////////
+
+	strHTML += "<tr sel=-1 id='FramingType'><td><b>Framing Type</b></td>";
+	
+	strHTML += "<td><select onChange='updateObjSel( this, this.value ); updateSaveUI();' name='f2'>";
+
+	for (var i=0; i<6; i++)
+	{
+		strHTML += "<option value='" + i + "' "
+		if ( parseInt(strFramingType) == i )
+		{
+			strHTML += "selected ";
+		}
+		strHTML += ">" + G_T1Framing2Name[ i ] + "</option>";
+	}
+	
+	strHTML += "</tr>";
+	
+	return strHTML;
+}
+
+function getExtraParamsE1( strLineCoding, strFramingType )
+{
+	strHTML = "<tr sel=-1 id='LineCoding'><td><b>Line Coding</b></td>";
+	
+	strHTML += "<td><input type='radio' name='f1'";
+	if ( strLineCoding == "0" )
+	{
+		strHTML += "checked ";
+	}
+	strHTML += "onClick='updateObjSel(this,0);'>HDB3</td>";
+	
+	strHTML += "<td><input type='radio' name='f1'";
+	if ( strLineCoding == "1" )
+	{
+		strHTML += "checked ";
+	}
+	strHTML += "onClick='updateObjSel(this,1);'>AMI</td>";
+	
+	strHTML += "<td><input type='radio' name='f1'";
+	if ( strLineCoding == "2" )
+	{
+		strHTML += "checked ";
+	}
+	strHTML += "onClick='updateObjSel(this,2);'>CMI</td>";
+	
+	strHTML += "<td><input type='radio' name='f1'";
+	if ( strLineCoding == "3" )
+	{
+		strHTML += "checked ";
+	}
+	strHTML += "onClick='updateObjSel(this,3);'>NRZ</td>";
+		
+	strHTML += "</tr>";
+	
+	///////////////////////////////////////////////////////////////////////////////////////////////
+
+	strHTML += "<tr sel=-1 id='FramingType'><td><b>Framing Type</b></td>";
+	
+	strHTML += "<td><input type=radio name='f2' ";
+	if ( strFramingType == "0" )
+	{
+		strHTML += "checked ";
+	}
+	strHTML += "onClick='updateObjSel( this, 0 );'>Extended CRC4</td>";
+	
+	strHTML += "<td><input type=radio name='f2'";
+	if ( strFramingType == "1" )
+	{
+		strHTML += "checked ";
+	}
+	strHTML += "onClick='updateObjSel( this, 1 );'>CRC4</td>";
+	
+	strHTML += "<td><input type=radio name='f2'";
+	if ( strFramingType == "2" )
+	{
+		strHTML += "checked ";
+	}
+	strHTML += "onClick='updateObjSel( this, 2 );'>Double Framing</td>";
+	
+	strHTML += "</tr>";
+	
+	return strHTML;
+}
+
+function displayPRIParamTable( arParam, arNewParam, skip_qsig )
+{	
+    var strSync   = arParam[ 0 ];
+    var strRemote = arParam[ 1 ];
+    
+	//-----------------------
+	// New - from HMC v1.24
+	var strLineCoding	= "-";
+	var strFramingType	= "-";
+	var strLongHaul		= "-";
+	
+	if ( arParam.length >= 5 )
+	{
+		strLineCoding	= arParam[ 2 ];
+		strFramingType	= arParam[ 3 ];
+		strLongHaul		= arParam[ 4 ];
+	}
+	//-----------------------
+	// New - from HMC v1.38
+	var strInboundDialMethod	= "-";
+	
+	if ( arParam.length >= 6 )
+	{
+		strInboundDialMethod	= arParam[ 5 ];
+	}
+	//-----------------------
+	
+	var strOutboundDialMethod	= "-";
+
+	if ( arParam.length >= 7 )
+	{
+		strOutboundDialMethod	= arParam[ 6 ];
+	}
+
+    var strHTML = "<table>";
+	
+	///////////////////////////////////////////////////////////////////////////////////////////////
+		
+	strHTML += "<tr sel=-1 id='PLLSync'><td><b>PLL Clock Sync</b></td>";
+	
+    strHTML += "<td><input type=radio name='pll' ";
+    if ( strSync == "1" )
+    {
+        strHTML += "checked ";
+    }
+    strHTML += "onClick='updateObjSel( this, 1 );'>Slave</td>";
+	
+    strHTML += "<td><input type=radio name='pll'";
+    if ( strSync == "2" )
+    {
+        strHTML += "checked ";
+    }
+    strHTML += "onClick='updateObjSel( this, 2 );'>Master</td>";
+	
+    strHTML += "</tr>";
+
+	///////////////////////////////////////////////////////////////////////////////////////////////
+	strHTML += "<tr sel=-1 id='RemoteDevice'><td><b>Remote Device</b></td>";
+	
+    strHTML += "<td><input type=radio name='r' ";
+    if ( strRemote == "1" )
+    {
+        strHTML += "checked ";
+    }
+    strHTML += "onClick='updateObjSel( this, 1 );'>PBX</td>";
+	
+    strHTML += "<td><input type=radio name='r'";
+    if ( strRemote == "2" )
+    {
+        strHTML += "checked ";
+    }
+    strHTML += "onClick='updateObjSel( this, 2 );'>Network</td>";
+	
+    strHTML += "</tr>";
+
+	///////////////////////////////////////////////////////////////////////////////////////////////
+    //alert( "G_strE1Addr: " + G_strE1Addr );
+	if ( strLineCoding != "-" )
+	{
+		
+		if ( G_strE1Addr.indexOf( G_strLastSelectedCard ) > -1)
+		{
+			strHTML += getExtraParamsE1( strLineCoding, strFramingType );
+		}
+		else
+		if ( G_strT1Addr.indexOf( G_strLastSelectedCard ) > -1 )
+		{
+			strHTML += getExtraParamsT1( strLineCoding, strFramingType );
+		}
+	}
+	
+	///////////////////////////////////////////////////////////////////////////////////////////////
+	
+	if ( strLongHaul != "-" )
+	{
+		strHTML += "<tr sel=-1 id='LongHaul'><td><b>Long Haul</b></td>";
+		
+		strHTML += "<td><input type=radio name='lh' ";
+		if ( strLongHaul == "0" )
+		{
+			strHTML += "checked ";
+		}
+		strHTML += "onClick='updateObjSel( this, 0 );'>Short</td>";
+		
+		strHTML += "<td><input type=radio name='lh'";
+		if ( strLongHaul == "1" )
+		{
+			strHTML += "checked ";
+		}
+		strHTML += "onClick='updateObjSel( this, 1 );'>Long</td>";
+		
+		strHTML += "</tr>";
+	}
+	
+	///////////////////////////////////////////////////////////////////////////////////////////////
+	
+	if ( arNewParam != null && strInboundDialMethod != "-"  )
+	{
+		strHTML += "<tr sel=-1 id='InboundDialMethod'><td><b>Inbound Dialing</b></td>";
+		
+		strHTML += "<td><input type=radio name='dm' ";
+		if ( strInboundDialMethod == "0" )
+		{
+			strHTML += "checked ";
+		}
+		strHTML += "onClick='updateObjSel( this, 0 );'>EnBlock</td>";
+		
+		strHTML += "<td><input type=radio name='dm'";
+		if ( strInboundDialMethod == "1" )
+		{
+			strHTML += "checked ";
+		}
+		strHTML += "onClick='updateObjSel( this, 1 );'>Overlap</td>";
+
+		strHTML += "</tr>";
+
+		if ( strOutboundDialMethod != "-" )
+		{
+			strHTML += "<tr sel=-1 id='OutboundDialMethod'><td><b>Outbound Dialing</b></td>";
+			
+			strHTML += "<td><input type=radio name='odm' ";
+			if ( strOutboundDialMethod == "0" )
+			{
+				strHTML += "checked ";
+			}
+			strHTML += "onClick='updateObjSel( this, 0 );'>EnBlock</td>";
+			
+			strHTML += "<td><input type=radio name='odm'";
+			if ( strOutboundDialMethod == "1" )
+			{
+				strHTML += "checked ";
+			}
+			strHTML += "onClick='updateObjSel( this, 1 );'>Overlap</td>";
+	
+			strHTML += "</tr>";
+		}
+		
+		var strCountry = arNewParam[ 0 ];
+		var strISDNVer = arNewParam[ 1 ];
+
+		strHTML += "<tr><td><b>Country Code</b></td><td>"
+		strHTML += getCountryCodeCombo( strCountry );
+		strHTML += "</td></tr>"
+
+		strHTML += "<tr><td><b>ISDN Version</b></td><td>"
+		strHTML += getISDNVersionCombo( strISDNVer, skip_qsig);
+		strHTML += "</td></tr>"
+	}
+	
+	///////////////////////////////////////////////////////////////////////////////////////////////
+	
+	strHTML += "</table>";
+
+    document.getElementById("DIV_GeneralSettings").innerHTML = strHTML;
+	
+	setInitialSel( arParam, arNewParam );
+}
+
+function getCountryCodeCombo( strCountry )
+{
+	var strHTML = "<select onChange='updateSaveUI();' name='country'>";
+	
+	for (var strKey in G_arCode2Name)
+	{
+		strHTML += "<option value='" + strKey + "' "
+		if ( strKey == strCountry )
+		{
+			strHTML += "selected ";
+		}
+		strHTML += ">" + G_arCode2Name[strKey] + "</option>";
+	}
+	
+	strHTML += "</select>"
+	return strHTML;
+}
+
+function getISDNVersionCombo( strISDNVer, skip_qsig)
+{
+	var strHTML = "<select onChange='updateSaveUI();' name='isdnver'>";
+	
+	for (var strKey in G_arVer2Name)
+	{
+		if (skip_qsig && strKey==="16")
+			continue;
+
+		strHTML += "<option value='" + strKey + "' "
+		if ( strKey == strISDNVer )
+		{
+			strHTML += "selected ";
+		}
+		strHTML += ">" + G_arVer2Name[strKey] + "</option>";
+	}
+	
+	strHTML += "</select>"
+	return strHTML;
+}
+
+function setInitialSel( arParam, arNewParam )
+{
+	G_nTotalParams = arParam.length;
+	document.getElementById("PLLSync").sel			= parseInt( arParam[ 0 ] );
+	document.getElementById("RemoteDevice").sel		= parseInt( arParam[ 1 ] );
+	if ( arParam.length > 2 )
+	{
+		document.getElementById("LineCoding").sel		= parseInt( arParam[ 2 ] );
+		document.getElementById("FramingType").sel		= parseInt( arParam[ 3 ] );
+		document.getElementById("LongHaul").sel			= parseInt( arParam[ 4 ] );
+	}
+	if ( arNewParam != null )
+	{
+		document.getElementById("InboundDialMethod").sel = parseInt( arParam[ 5 ] );
+
+		if ( document.getElementById("OutboundDialMethod") != null )
+		{
+			document.getElementById("OutboundDialMethod").sel = parseInt( arParam[ 6 ] );
+		}
+	}
+}
+
+function onSelectSync( obj )
+{
+    updateSaveUI();
+}
+
+function onSelectRemote( obj )
+{
+    updateSaveUI();
+}
+
+function updateObjSel( obj, nVal )
+{
+	obj.parentNode.parentNode.sel=nVal;
+	updateSaveUI();
+}
+
+function updateSaveUI()
+{
+    var strSave = utils_getButtonHTML( "savePRIConfig()", "SaveSettings.jpg" );
+    document.getElementById("DIV_SaveConfig").innerHTML = strSave;
+}
+
+function getInfo( strAddress )
+{
+    var strCommand = "E1GetConnParams /A";
+    strCommand += strAddress;
+    strCommand += "/I22";
+    parent.frames[0].SendCommand( strCommand );
+    G_nPRISettingsTimerID = setTimeout("getInfo('" + strAddress + "')",4000);
+}
+function clearGUI()
+{
+    document.getElementById("update_settings").innerHTML = "";
+	document.getElementById("DIV_GeneralSettings").innerHTML = "";
+	document.getElementById("DIV_SaveConfig").innerHTML = "";
+}
+</SCRIPT>
+
+<BODY onLoad="init()" onselectstart="return false;" bgcolor="white" ondragstart="return false;">
+<font size=4 face="Arial">PRI Connection Settings</font>
+<hr>
+
+<font face=Arial size=2>
+<div id="selectcard"></div>
+<br>
+
+
+<div id="update_settings"></div>
+<br>
+
+
+<div id="DIV_GeneralSettings">
+</div>
+
+<br>
+<div id="DIV_SaveConfig">
+</div>
+
+</font>
+
+</BODY>
+</HTML>

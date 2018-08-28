@@ -1,0 +1,381 @@
+<HTML>
+<HEAD><TITLE>PRI - Configuration</TITLE></HEAD>
+<STYLE type=text/css>TABLE {
+	BORDER-RIGHT: #000000 1px solid; BORDER-TOP: #000000 1px solid; BORDER-LEFT: #000000 1px solid; BORDER-BOTTOM: #000000 1px solid; border-spacing: 0px; }
+TD {
+	PADDING-RIGHT: 0.5em; PADDING-LEFT: 0.5em; FONT-SIZE: 10pt; PADDING-BOTTOM: 2px; PADDING-TOP: 2px; FONT-FAMILY: Arial, Helvetica, sans-serif; WHITE-SPACE: nowrap
+}
+
+a:link {color: #0000ff; text-decoration: underline; }
+a:active {color: #0000ff; text-decoration: underline; }
+a:visited {color: #0000ff; text-decoration: underline; }
+a:hover {color: #00dd00; text-decoration: none; }
+</STYLE>
+<SCRIPT language=javascript src="../utils/utilfuncs.js"></SCRIPT>
+<SCRIPT language=javascript src="../utils/alloc_logic.js"></SCRIPT>
+<SCRIPT>
+// Received command from applet
+var G_bSaving = 0;
+var	G_arNumberLen = new Array();
+var	G_arPrefix = new Array();
+var G_nCurrentPlan = 1;
+var G_nTotalPlans  = 20;		//was 8
+var G_nCurrentSave;
+
+var G_strLastSelectedCard;
+var G_nDialFiltersTimerID;
+
+function onSelectCard( strCard, strCardType )
+{
+	if ( strCard == null )
+	{
+		return;
+	}
+    var nSlot = G_configInfo.calcSlotNumber( strCard );
+    G_strLastSelectedCard = strCard;
+	G_nCurrentPlan = 1;
+    clearGUI();
+	showInfoMsg( "Please wait", false );
+    getNextPlan();
+    document.getElementById("update_settings").innerHTML = getSelCardText( nSlot, strCardType );
+}
+
+/*
+function hideSave()
+{
+    document.getElementById("DIV_SaveConfig").innerHTML = "";
+}
+*/
+
+function showSave()
+{
+    /*
+    if ( document.getElementById("DIV_SaveConfig").innerHTML == "Saving configuration..." )
+    {
+        return;
+    }
+    */
+	
+    var strSave = utils_getButtonHTML( "saveDialPlanConfig(0)", "SaveSettings.jpg" );
+    document.getElementById("DIV_SaveConfig").innerHTML = strSave;
+}
+
+function saveDialPlanConfig( nCounter )
+{    
+	G_bSaving = 1;
+	G_nCurrentSave = nCounter;
+	document.getElementById("DIV_SaveConfig").innerHTML = "Saving configuration";
+	saveNextDialPlan();
+	         
+}
+function saveNextDialPlan()
+{
+	if ( G_nCurrentSave < G_nTotalPlans )
+	{
+        var nIndex = 770 + (G_nCurrentSave+1);
+		var strCommand = "SendGenericPacket 24:/A" + G_strLastSelectedCard;
+        strCommand    += "/I" + nIndex + "/G" + (G_nCurrentSave+1) + ",";    
+        strCommand    += G_arPrefix[ G_nCurrentSave ] + "," + G_arNumberLen[ G_nCurrentSave ];    
+        parent.frames[0].SendCommand( strCommand );
+        G_nCurrentSave++;
+        //G_nDialFiltersTimerID = setTimeout("saveDialPlanConfig(" + nCounter + ")",200);
+        document.getElementById("DIV_SaveConfig").innerHTML += ".";        	        
+	}
+	else
+	{
+		document.getElementById("DIV_SaveConfig").innerHTML = "Saved successfully!";
+	}   
+}
+
+function OnData( strMessage )
+{
+    //alert( "Incoming: " + strMessage );
+    var strCommand = new String( strMessage );
+    var strParam = strCommand.split( " " );
+    var strSection;
+    
+    var packStr = new PacketString( strParam[1] );
+    
+    switch ( strParam[0] )
+    {
+        case "GWConfigInfo":
+        {
+			var objSelect = G_configInfo.getSelectCardHTML( packStr, "E1.0,T1.0", "Select PRI card", "onSelectCard" );
+            var strHTML = objSelect.m_strHTML;
+			var strSelCard = objSelect.m_strSelCard;
+			var strSelCardType = objSelect.m_strSelCardType;
+            document.getElementById("selectcard").innerHTML = strHTML;
+            if ( strSelCard != null )
+            {
+                onSelectCard( strSelCard, strSelCardType );				
+                
+            } 
+            else          
+            {
+                document.getElementById("DIV_DialFilters").style.visibility = "hidden";
+            }
+            break;
+        }
+        case "Ack":
+        {
+            //if ( packStr.getSection( "I" ) == 770 + G_nTotalPlans )
+                saveNextDialPlan();
+            break;
+        }
+        case "GWError":
+        {   
+            //check if first plan query (I771) returns Error
+            if ( packStr.getSection( "I" ) == "771" )
+				if ( packStr.getSection( "R" ) == "01" )
+				{
+					clearGUI();
+					showInfoMsg ( "This feature is only active when inbound dialing mode is OVERLAP.", false );
+				}
+				else
+				{
+                	document.getElementById("Err").innerHTML = "This card does not support dial plan.";
+			    }
+            else
+                document.getElementById("DIV_SaveConfig").innerHTML = "Error saving configuration.";
+            break;
+        }
+        case "GenericReply":
+        {       
+            if ( strParam[1].indexOf( "/#24" ) > -1 )
+            {           
+                var strReply = packStr.getSection( "g" );
+                var arReply  = strReply.split( "," );
+                //save prefix and len into arrays
+                if ( arReply[2] == 0 )
+                {
+                    G_arPrefix[ arReply[0]-1 ]    = ""; 
+                    G_arNumberLen[ arReply[0]-1 ] = "";
+                }
+                else
+                {
+                    G_arPrefix[ arReply[0]-1 ]    = arReply[1]; 
+                    G_arNumberLen[ arReply[0]-1 ] = arReply[2];
+                }
+                //check if reached last plan
+                if ( G_nCurrentPlan <= G_nTotalPlans )
+                {
+				   showInfoMsg( ".", true );
+                   getNextPlan();
+                }
+                else
+                { 
+				   showInfoMsg ( "These settings are relevant only for inbound OVERLAP calls (to the HyperGateway) on this specific PRI card.",false) ;				   
+                   displayDialFiltersTable();
+                   G_nCurrentPlan = 1;                  
+                }
+            }        
+            break;
+        }
+		
+        default:
+        {
+            // Send this to TCPServer log file ? internal log file ?
+            //alert( "Got unknown message:" + strMessage );
+            break;
+        }
+    }
+}
+function getNextPlan()
+{
+    var nIndex = 770 + G_nCurrentPlan;
+    var strCommand = "SendGenericPacket 24:/A" + G_strLastSelectedCard;
+    strCommand    += "/I" + nIndex + "/Q" + G_nCurrentPlan++;  
+    parent.frames[0].SendCommand( strCommand );  
+}
+
+var G_nInEdit = 0;
+function editName( nIndex )
+{   
+	if ( G_nInEdit == 1 )
+	{
+		return;
+	}
+	
+	G_nInEdit = 1;
+	//hideSave();
+	var strID = "LenID" + nIndex;
+	var objTD = document.getElementById( strID );
+    
+    var strID = "PrefixID" + nIndex;
+	var objPrefix = document.getElementById( strID );
+	var strPrefix = objPrefix.value;
+ 
+    var strCurName = objTD.innerHTML;
+    if ( IsNumeric(strPrefix) == false )
+    {
+        alert( "Prefix should contain only numbers!!!");
+		objPrefix.value = "";
+        G_nInEdit = 0;
+        return;
+    
+    }
+	var strComboHTML = "<select id='ComboID" + nIndex + "'>";
+    if ( strPrefix.length == 0)
+    {
+
+	    strComboHTML += "<option>No Plan</option></select>";
+    }
+	else
+	{	//Get Current NumLen, If exist - it will the selected value on combo box
+		if ( objTD.innerHTML.length > 0 )
+		{
+			strComboHTML += "<option>No Plan</option>";
+			//strComboHTML += "<option selected>" + strPrefix.length + "</option>";
+			for (var i=1; i<33; i++)
+			{
+				strComboHTML += "<option ";	
+				if ( i == objTD.innerHTML)
+						strComboHTML += " selected";
+				strComboHTML += ">" + i + "</option>";
+			}
+			strComboHTML += "</select>"		
+		}
+		else
+		{
+			
+		    strComboHTML += "<option>No Plan</option>";
+			strComboHTML += "<option selected>" + strPrefix.length + "</option>";
+			for (var i=strPrefix.length + 1; i<33; i++)
+			{
+				strComboHTML += "<option ";
+				
+				strComboHTML += ">" + i + "</option>";
+			}
+			strComboHTML += "</select>"
+		}
+	}
+	objTD.innerHTML = strComboHTML;
+	
+	var strID = "ActionID" + nIndex;
+	var objActionTD = document.getElementById( strID );
+	var strActionHTML = "<a href='javascript:saveName(" + nIndex + ")'>Save</a>";
+	objActionTD.innerHTML = strActionHTML;
+}
+
+
+function saveName( nIndex )
+{
+	var strID = "LenID" + nIndex;
+	var objTD = document.getElementById( strID );
+	
+    var strID = "PrefixID" + nIndex;
+	var objPrefix = document.getElementById( strID );
+	var strPrefix = objPrefix.value;
+    
+    var strComboID = "ComboID" + nIndex;
+	var objNumLen = document.getElementById( strComboID );
+	var strSelHTML = objNumLen.options[objNumLen.selectedIndex].text
+    if ( strSelHTML == "No Plan" )
+	{
+		strSelHTML = "";
+        strPrefix = "";
+        objPrefix.value = strPrefix;
+	}    
+	objTD.innerHTML = strSelHTML;
+	G_arNumberLen[ nIndex ] = strSelHTML;
+    G_arPrefix[ nIndex ]    = strPrefix;
+	var strID = "ActionID" + nIndex;
+	var objActionTD = document.getElementById( strID );
+	var strActionHTML = "<a href='javascript:editName(" + nIndex + ")'>Edit</a>";
+	objActionTD.innerHTML = strActionHTML;
+	
+    showSave();
+	G_nInEdit = 0;
+}
+
+function displayDialFiltersTable()
+{
+	var divObj = document.getElementById("DIV_DialFilters");
+	divObj.style.borderStyle = "solid";
+	
+    var strHTML = "<table>";
+    strHTML += "<tr><td width='100' id='PlanNo'></td>";
+	strHTML += "<td width='120' id='DialedPrefix'></td>";
+	strHTML += "<td width='120' id='NumberLength'></td>";
+	strHTML += "<td width='120' id='action'></td>";
+
+	for (var i=0; i<G_nTotalPlans; i++)
+    {
+        strHTML += "<tr><td align=center name=ID" + i + ">" + (i+1) + "</td>";
+        strHTML += "<td align=center><input type=TEXT MAXLENGTH=8 SIZE=5 name='PrefixID" + i + "' value='" + G_arPrefix[ i ] + "'></td>";
+        strHTML += "<td align=center id='LenID" + i + "'>" + G_arNumberLen[ i ] + "</td>";
+        strHTML += "<td align=center id='ActionID" + i + "'><a href='javascript:editName(" + i + ")'>Edit</a></td></tr>";
+    }
+	
+    strHTML += "</table>";
+    
+    document.getElementById("DIV_DialFilters").innerHTML = strHTML;
+	
+    strHTML = "<table>";
+    strHTML += "<tr bgcolor='#f0f0f0'><td width='"
+	strHTML += document.getElementById( 'PlanNo' ).clientWidth + "'>Plan</td>";
+	strHTML += "<td width='"
+	strHTML += document.getElementById( 'DialedPrefix' ).clientWidth + "'>Dialed Prefix</td>";	
+	strHTML += "<td width='"
+	strHTML += document.getElementById( 'NumberLength' ).clientWidth + "'>Number Length</td>";	
+	strHTML += "<td width='"
+	strHTML += document.getElementById( 'action' ).clientWidth + "'>Status</td>";
+    strHTML += "</table>";
+	
+	document.getElementById("DIV_DialFiltersHeader").innerHTML = strHTML;
+}
+
+
+function init()
+{    
+	parent.frames[0].SendCommand( "GetGWConfig" );
+}
+
+function showInfoMsg(strMsg, bAdd)
+{
+	if (bAdd==true)
+		document.getElementById("info").innerHTML = document.getElementById("info").innerHTML + strMsg;
+	else
+		document.getElementById("info").innerHTML = strMsg;
+}
+function clearGUI()
+{
+	var divObj = document.getElementById("DIV_DialFilters");
+	divObj.style.borderStyle = "none"; 
+    document.getElementById("update_settings").innerHTML = "";
+    document.getElementById("Err").innerHTML = "";
+    document.getElementById("DIV_DialFiltersHeader").innerHTML = "";
+    document.getElementById("DIV_DialFilters").innerHTML = "";
+    document.getElementById("DIV_SaveConfig").innerHTML = "";
+	document.getElementById("info").innerHTML = "";
+    
+}
+</SCRIPT>
+
+<BODY onload="init();" bgcolor="white" onselectstart="return false;" ondragstart="return false;">
+<font size=4 face="Arial">PRI Card Dial Plan</font>
+<hr>
+
+<font face=Arial size=2>
+
+<div id="selectcard"></div>
+
+<div id="update_settings"></div>
+<br>
+<div id="info"></div>
+<div id="Err"></div>
+<br>
+
+<div id="DIV_DialFiltersHeader">
+</div>
+<div id="DIV_DialFilters" style="border-style: solid; border-width: thin; width: 310px; height: 280px; overflow: auto;">
+</div>
+
+
+<div id="DIV_SaveConfig">
+</div>
+
+</font>
+
+</BODY>
+</HTML>

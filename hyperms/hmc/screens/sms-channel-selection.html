@@ -1,0 +1,787 @@
+<HTML>
+<HEAD>
+<TITLE>SMS Server Channel Selection</TITLE>
+<link type="text/css" href="../default.css" rel="stylesheet">
+<style>
+a:link {color: #0000ff; text-decoration: underline; }
+a:active {color: #0000ff; text-decoration: underline; }
+a:visited {color: #0000ff; text-decoration: underline; }
+a:hover {color: #00dd00; text-decoration: none; }
+</style>
+</HEAD>
+<SCRIPT language=javascript src="../utils/utilfuncs.js"></SCRIPT>
+<SCRIPT language=javascript src="../utils/alloc_logic.js"></SCRIPT>
+<SCRIPT language=javascript src="../utils/rpc.js"></SCRIPT>
+
+<script id="scriptreceiver"></script>
+<SCRIPT>
+var G_arAddresses	   = new Array();
+var G_arTypes		   = new Array();
+var G_nSelectedMethod        = 0;
+var G_nCurrent				 = 0;
+var G_nSmsChnlsTimerID       = 0; 
+var G_nSmsSaveTimerID        = 0;
+
+var G_strLastSelectedCard;
+var G_strLastSelectedCardType;
+
+var g_lastParamLen = 4;
+var g_rpc = new RPC();
+var g_arGroups; // list of available routing groups
+var g_arPort2Group; // mapping between a module and the group it belongs to
+var g_strPort2Group; // mapping between all set and the group it belongs to
+var g_mapGroupSet; // set of existing groups;
+
+/**********************************************************************************************/
+function init()
+/**********************************************************************************************/
+{
+    getGWConfig();
+}
+
+/**********************************************************************************************/
+function getGWConfig()
+/**********************************************************************************************/
+{
+    parent.frames[0].SendCommand( "GetGWConfig" );
+}
+
+/**********************************************************************************************/
+function onSelectCard( strCard, strCardType )
+/**********************************************************************************************/
+{
+    var nSlot = G_configInfo.calcSlotNumber( strCard );
+    G_strLastSelectedCard = strCard;
+	G_strLastSelectedCardType = strCardType;
+    
+	document.getElementById("DIV_SaveConfig").innerHTML = "";
+    clearTimeout(G_nSmsChnlsTimerID);
+/*
+	if ( strCardType != "CG4.0" )
+	{
+		var strHTML = "<table><tr><td>This feature is not supported by this (" + strCardType + ") card.</td></tr></table>";
+		document.getElementById("DIV_Values").innerHTML = strHTML;
+		document.getElementById("update_settings").innerHTML = "";
+		return;
+	}
+*/    
+    getInfo( strCard, 0 );
+    document.getElementById("update_settings").innerHTML = getSelCardText( nSlot, strCardType );
+	onSelectedMethod(0);
+}
+/**********************************************************************************************/
+function hideSave()
+/**********************************************************************************************/
+{
+    document.getElementById("DIV_SaveConfig").innerHTML = "";
+}
+/**********************************************************************************************/
+function showSave()
+/**********************************************************************************************/
+{
+    var strSave = utils_getButtonHTML( "saveValues()", "SaveSettings.jpg" );
+    document.getElementById("DIV_SaveConfig").innerHTML = strSave;
+}
+
+/**********************************************************************************************/
+function saveValues()
+/**********************************************************************************************/
+{
+	G_strLastSelectedCardType
+    var strCommand = "SendGenericPacket 92:/A" + G_strLastSelectedCard;
+    strCommand += "/I442/G";
+	switch ( G_nSelectedMethod )
+	{
+		case 0:
+			for ( var i=0; i<=3; i++ )
+			{
+				var strID = "p" + i;
+				if (document.getElementById(strID).disabled)
+					strCommand += "2";
+				else
+					strCommand += (document.getElementById(strID).checked) ? "3" : "0";
+				if (i != 3)
+				{
+					strCommand += ",";
+				}
+			}			
+			break;
+		case 1:
+			checkObj = document.getElementById("pAll");
+			if (checkObj.disabled)
+					strCommand += "2,2,2,2";
+			else
+				strCommand += (checkObj.checked) ? "3,3,3,3" : "0,0,0,0";						
+			break;
+		case 2:					
+			G_nCurrent = 0;
+			saveAllValues ( );
+			return;		
+	}
+	//alert( strCommand );
+    parent.frames[0].SendCommand( strCommand );
+
+    document.getElementById("DIV_SaveConfig").innerHTML = "Saving configuration...";
+}
+/**********************************************************************************************/
+function saveAllValues( )
+/**********************************************************************************************/
+{
+	//loop over all cards and send command	
+	if ( G_nCurrent == G_arAddresses.length)
+	{		
+		clearTimeout( G_nSmsSaveTimerID );		
+		document.getElementById("DIV_SaveConfig").innerHTML = "Configuration Saved for all Cards (" + G_nCurrent + ") Successfully!";
+		return;
+	}    
+	checkObj = document.getElementById("pAll");
+	var param = (checkObj.checked) ? "3,3,3,3" : "0,0,0,0";	
+	var strCommand = "SendGenericPacket 92:/A" + G_arAddresses[G_nCurrent];
+    strCommand += "/I40"+G_nCurrent+"/G" + param;
+	parent.frames[0].SendCommand( strCommand );
+	document.getElementById("DIV_SaveConfig").innerHTML = "Updating Card#" + (G_nCurrent+1);
+	G_nCurrent++;
+	
+	
+}
+/**********************************************************************************************/
+function OnData( strMessage )
+/**********************************************************************************************/
+{
+    var strCommand = new String( strMessage );
+    var strParam = strCommand.split( " " );
+    var packStr = new PacketString( strParam[1] );
+    
+    switch ( strParam[0] )
+    {
+        case "GWConfigInfo":
+        {
+			var objSelect = G_configInfo.getSelectCardHTML( packStr, "CG4.0,CU4.1", "Select cellular card", "onSelectCard" );
+            var strHTML = objSelect.m_strHTML;
+			var strSelCard = objSelect.m_strSelCard;
+            document.getElementById("selectcard").innerHTML = strHTML;
+            if ( strSelCard != null )
+            {
+                onSelectCard( strSelCard, objSelect.m_strSelCardType );
+            }
+			//get all cards addresses for global channeles selection
+		   FillCardType( "CG4.0" );
+		  
+		   FillCardType( "CU4.1" );
+		  
+		   		   
+		   sortCardsAddresses();      
+            break;
+        }
+        
+        case "Ack":
+        {
+			if ( G_nSelectedMethod != 2 )
+				saveSimGroups();
+			else				
+				saveAllSimGroups();
+			//	document.getElementById("DIV_SaveConfig").innerHTML = "Configuration saved.";
+            break;
+        }
+        
+        case "GWError":
+        {
+            clearTimeout(G_nSmsChnlsTimerID);
+			var strErrMsg = "Error communicating with card in slot " + G_configInfo.calcSlotNumber( G_strLastSelectedCard );
+            document.getElementById("DIV_SaveConfig").innerHTML = strErrMsg;
+            break;
+        }
+
+        case "CellSMSTriggersReply":
+        {
+            clearTimeout(G_nSmsChnlsTimerID);
+            var strInfo = packStr.getSection( "g" );
+            var arParam = strInfo.split( "," );
+            displayTable( arParam );
+            g_lastParamLen = arParam.length;
+            getSimGroups();
+        }
+        
+        default:
+        {
+            break;
+        }
+    }
+}
+/**********************************************************************************************/
+function FillCardType( strType )
+/**********************************************************************************************/
+{
+	var arTypeAddr = G_configInfo.getCardTypeAddresses( strType );
+        
+	if ( typeof( arTypeAddr ) != 'undefined' )
+	{
+		for (var i=0; i<arTypeAddr.length; i++)
+		{
+			G_arTypes.push( strType );
+		}
+		G_arAddresses = G_arAddresses.concat( arTypeAddr );
+	}
+}
+/**********************************************************************************************/
+function sortCardsAddresses()
+/**********************************************************************************************/
+{
+	var nAddress = new Array();
+	for ( var i=0; i<G_arAddresses.length; i++ )
+	{
+		nAddress[i] = parseInt(G_arAddresses[i] , 16);
+	}
+	nAddress.sort();
+	for ( var i=0; i<nAddress.length; i++ )
+	{
+		G_arAddresses[i] = nAddress[i].toString(16);
+	}
+}
+/**********************************************************************************************/
+function showMethodTable( nChecked )
+/**********************************************************************************************/
+
+{
+	var checked = new Array;
+	for (var i=0; i<3; i++)
+	{
+		if ( nChecked == i )
+		{
+			checked[ i ] = "checked";
+		}
+		else
+		{
+			checked[ i ] = "";
+		}
+	}
+	strHTML = "<br><table width='400'>"; 
+	strHTML += "<tr bgcolor='#eeeeee'>";
+	strHTML += "<td><input type='radio' onClick='onSelectedMethod(0)' name='SetMethod' " + checked[0] + ">Module Settings</td>";
+	strHTML += "<td><input type='radio' onClick='onSelectedMethod(1)' name='SetMethod' " + checked[1] + ">Entire Card</td>";
+	strHTML += "<td><input type='radio' onClick='onSelectedMethod(2)' name='SetMethod' " + checked[2] + ">Entire System</td>";
+	strHTML += "</tr></table><br>";
+    document.getElementById("mode").innerHTML = strHTML;
+}
+/**********************************************************************************************/
+function onSelectedMethod( nMethod )
+/**********************************************************************************************/
+{
+	G_nSelectedMethod = nMethod;
+/*
+	if ( G_strLastSelectedCardType != "CG4.0" )
+	{
+		var strHTML = "<table><tr><td>This feature is not supported by this (" + G_strLastSelectedCardType + ") card.</td></tr></table>";
+		document.getElementById("DIV_Values").innerHTML = strHTML;
+		document.getElementById("update_settings").innerHTML = "";
+		return;
+	}
+*/
+	if ( nMethod != 0 )
+	{
+		//reset edit mode
+		G_nInEdit = 0;
+		g_strPort2Group = "";
+		//add save button		
+		displayTableEntire();
+		showSave();
+		getSimGroups();
+		
+	} 
+	else
+	{
+		hideSave();
+		getInfo( G_strLastSelectedCard );	
+	}
+	
+	//refreshSliderPos();
+}
+
+
+/**********************************************************************************************/
+function displayTable( arParam )
+/**********************************************************************************************/
+{
+	
+    showMethodTable(0);
+	var strHTML = "<table>";
+	strHTML += "<tr bgcolor='#dedede'><td>Module</td><td>Enable / Disable</td>";
+    strHTML +="<td>Route to Group</td><td></td></tr>"
+    for (var i=0; i<arParam.length; i++)
+    {
+        strHTML += "<tr><td width=80>Module " + (i+1) + "</td>";
+        strHTML += "<td><input type='checkbox' id='p" + i + "' name='R" + i + "' ";
+        if ( arParam[ i ] == "3" )			//SMS server support
+        {
+            strHTML += "checked ";
+        }
+        else if ( arParam[ i ] == "2" )		//Raw SMS support
+        {
+            strHTML += "DISABLED ";
+        }
+        strHTML += "onClick='showSave();'>&nbsp;&nbsp;SMS Enabled</td>";
+        strHTML += "<td id='idgroup" + i + "'>&nbsp;</td>";
+        strHTML += "<td id='idmodgroup" + i + "'>&nbsp;</td>";
+        strHTML += "</tr><tr></tr>";
+    }
+    
+    strHTML += "</table>";
+    
+    document.getElementById("DIV_Values").innerHTML = strHTML;
+    document.getElementById("DIV_SaveConfig").innerHTML = "";
+}
+/**********************************************************************************************/
+function displayTableEntire()
+/**********************************************************************************************/
+{
+var strHTML = "<table>";
+	strHTML += "<tr bgcolor='#dedede'><td>Module</td><td>Enable / Disable</td>";
+    strHTML +="<td>Route to Group</td><td></td></tr>"  
+	strHTML += "<tr><td width=80>Module</td>";
+	strHTML += "<td><input type='checkbox' id='pAll' name='RALL' ";
+	strHTML += "onClick='showSave();'>&nbsp;&nbsp;SMS Enabled</td>";
+	strHTML += "<td id='idgroupAll'>&nbsp;</td>";
+	strHTML += "<td id='idmodgroupAll'>&nbsp;</td>";
+	strHTML += "</tr>";     
+    strHTML += "</table>";
+    
+    document.getElementById("DIV_Values").innerHTML = strHTML;
+    document.getElementById("DIV_SaveConfig").innerHTML = "";
+}
+/**********************************************************************************************/
+function getInfo( strAddress, nIsRetry )
+/**********************************************************************************************/
+{
+    var strCommand = "SendGenericPacket 92:/A" + strAddress;
+    strCommand += "/I443";
+    parent.frames[0].SendCommand( strCommand );
+	if ( nIsRetry == 0 )
+	{
+		G_nSmsChnlsTimerID = setTimeout("getInfo('" + strAddress + "', 1)",6000);
+	}
+}
+
+/**********************************************************************************************/
+function saveSimGroups()
+/**********************************************************************************************/
+{
+	var strJSON = '{"method":"set_sim_config", "groups":{';
+	switch ( G_nSelectedMethod )
+	{
+		case 0:
+			for (var i=0; i<g_lastParamLen; i++)
+			{
+				var nPort = i+1;
+				strJSON += '"' + G_strLastSelectedCard + "#" + nPort + '": {"group":';
+				if ( g_arPort2Group[ i ] == null )
+				{
+					strJSON += "null, "
+				}
+				else
+				{
+					strJSON += '"' + g_arPort2Group[ i ] + '", ';
+				}
+				strJSON += '"port":';
+				strJSON += '"' + nPort + '", ';
+				strJSON += '"card":';
+				strJSON += '"' + G_strLastSelectedCard + '", ';
+				strJSON += '"activ":';
+				var strID = "p" + i; 
+				strJSON += (document.getElementById(strID).checked) + "}";
+				if ( i < g_lastParamLen-1 )
+				{
+					strJSON += ",";
+				}
+			}
+			break;
+		case 1:
+			for (var i=0; i<g_lastParamLen; i++)
+			{
+				var nPort = i+1;
+				strJSON += '"' + G_strLastSelectedCard + "#" + nPort + '": {"group":';				
+				if ( g_strPort2Group == null )
+				{
+					strJSON += "null, "
+				}
+				else
+				{
+					strJSON += '"' + g_strPort2Group + '", ';
+				}
+				strJSON += '"port":';
+				strJSON += '"' + nPort + '", ';
+				strJSON += '"card":';
+				strJSON += '"' + G_strLastSelectedCard + '", ';
+				strJSON += '"activ":';
+				var strID = "pAll"; 
+				strJSON += (document.getElementById(strID).checked) + "}";
+				if ( i < g_lastParamLen-1 )
+				{
+					strJSON += ",";
+				}
+			}
+			break;		
+	}
+	    		   
+    strJSON += "}}";
+    
+    var objParams = { "method":"setGroups", "json":strJSON };
+   	var strServerName	= parent.frames[0].getServerIP();
+    var strURL = "http://" + strServerName + "/cb/SIMGroups.php";
+    g_rpc.invoke( strURL, objParams, "onSetGroupsReply", 4000  );
+}
+/**********************************************************************************************/
+function saveAllSimGroups()
+/**********************************************************************************************/
+{
+	var strJSON = '{"method":"set_sim_config", "groups":{';
+	for (var i=0; i<g_lastParamLen; i++)
+	{
+		var nPort = i+1;
+		strJSON += '"' + G_arAddresses[G_nCurrent-1] + "#" + nPort + '": {"group":';				
+		if ( g_strPort2Group == null )
+		{
+			strJSON += "null, "
+		}
+		else
+		{
+			strJSON += '"' + g_strPort2Group + '", ';
+		}
+		strJSON += '"port":';
+		strJSON += '"' + nPort + '", ';
+		strJSON += '"card":';
+		strJSON += '"' + G_arAddresses[G_nCurrent-1] + '", ';
+		strJSON += '"activ":';
+		var strID = "pAll"; 
+		strJSON += (document.getElementById(strID).checked) + "}";
+		if ( i < g_lastParamLen-1 )
+		{
+			strJSON += ",";
+		}
+	}
+	strJSON += "}}";    
+    
+	var objParams = { "method":"setGroups", "json":strJSON };
+   	var strServerName = parent.frames[0].getServerIP();
+    var strURL = "http://" + strServerName + "/cb/SIMGroups.php";
+    g_rpc.invoke( strURL, objParams, "onSetAllGroupsReply", 4000  );
+}
+/**********************************************************************************************/
+function onSetGroupsReply( objData )
+/**********************************************************************************************/
+{
+	
+	
+    var strMsg = "Configuration saved.";
+    if ( objData.reply != "ok" )
+    {
+        strMsg = "Error saving routing configuration."
+    }
+    document.getElementById("DIV_SaveConfig").innerHTML = strMsg;
+    hideActions();
+    getSimGroups();
+}
+/**********************************************************************************************/
+function onSetAllGroupsReply( objData )
+/**********************************************************************************************/
+{
+	if ( G_nCurrent == G_arAddresses.length)
+	{		
+		clearTimeout( G_nSmsSaveTimerID );		
+		var strMsg = "Configuration Saved for all Cards (" + G_nCurrent + ") Successfully!";
+		if ( objData.reply != "ok" )
+		{
+			strMsg = "Error saving routing configuration."
+		}
+		document.getElementById("DIV_SaveConfig").innerHTML = strMsg;		
+		return;
+	}
+	G_nSmsSaveTimerID = setTimeout("saveAllValues()",1500);
+}
+/**********************************************************************************************/
+function getSimGroups()
+/**********************************************************************************************/
+{
+    var objParams = { "method":"getGroups" };
+   	var strServerName	= parent.frames[0].getServerIP();
+    var strURL = "http://" + strServerName + "/cb/SIMGroups.php";
+    g_rpc.invoke( strURL, objParams, "onSimGroupsReply", 4000  );
+}
+
+/**********************************************************************************************/
+function onSimGroupsReply( objData )
+/**********************************************************************************************/
+{
+    if ('error' in objData) {
+        var html  = '<div class="alert">';
+            html += '  <h1 class="message">' + objData.error + '</h1>';
+            html += '  <p class="info">' + objData.info + '</p>';
+            html += '</div>';
+        document.body.innerHTML = html;
+        return;
+    }
+
+    strGroups = "";
+    objGroups = objData.sim_config;
+    //alert( toJSON( objGroups ) );
+    g_arPort2Group = new Array();
+
+    for (var i=0; i<g_lastParamLen; i++)
+    {
+        g_arPort2Group[ i ] = null;
+    }
+    
+    g_mapGroupSet = new Array();
+    for (var strAddr in objGroups)
+    {
+		
+        strI2CAddr = objGroups[strAddr].card;
+        var objGroup = objGroups[strAddr];
+        //alert( toJSON( objGroup ) );
+        if ( objGroup.group != null )
+        {
+            g_mapGroupSet[ objGroup.group ] = 0;
+        }
+        /*
+        else                //
+        {                   //  TODO: Remove this code after Yuval
+            continue;       //        fixes the get_sim_config
+        }                   //
+        */
+        var nPort = parseInt(objGroup.port)-1;
+        if ( strI2CAddr == G_strLastSelectedCard )
+        {
+            g_arPort2Group[ nPort ] = objGroup.group;
+        }
+    }
+    var nCount = 0;
+    g_arGroups = new Array();
+    for (var strGroup in g_mapGroupSet)
+    {
+        g_arGroups[nCount++] = strGroup;
+    }
+    
+	//if ( G_nSelectedMethod != 2 )
+		updateGroupsUI();
+}
+
+/**********************************************************************************************/
+function updateGroupsUI()
+/**********************************************************************************************/
+{
+	
+	if ( G_nSelectedMethod != 0 )
+	{	
+		//alert ("g_strPort2Group=" + g_strPort2Group);
+		if ( document.getElementById( "idgroupAll" ) )
+			document.getElementById( "idgroupAll" ).innerHTML = (g_strPort2Group == null) ? "" : g_strPort2Group;
+        var strHTML = "&nbsp;&nbsp;&nbsp;<a href='#' onClick='onNewGroup()'>New</a>";
+        if (g_arGroups.length > 0)
+        {
+            strHTML += " | <a href='#' onClick='onSelGroup()'>Select</a>";
+        }
+        if ( document.getElementById( "idmodgroupAll") )
+			document.getElementById( "idmodgroupAll").innerHTML = strHTML;
+		return;
+	}
+	
+    for (var i=0; i<g_lastParamLen; i++)
+    {
+        var strGroup = g_arPort2Group[ i ];
+        var strID = "p" + i; 
+
+        if (strGroup == null)
+        {
+            strGroup = "";
+        }
+        
+        if ( strGroup == "" && !document.getElementById(strID).checked )
+        {
+            continue;   // TODO: remove this line after Yuval fixes the get_sim_config
+            //strGroup = "No Group";
+        }
+        document.getElementById( "idgroup" + i ).innerHTML = strGroup;
+        var strHTML = "&nbsp;&nbsp;&nbsp;<a href='#' onClick='onNewGroup(" + i + ")'>New</a>";
+        if (g_arGroups.length > 0)
+        {
+            strHTML += " | <a href='#' onClick='onSelGroup(" + i + ")'>Select</a>";
+        }
+        document.getElementById( "idmodgroup" + i ).innerHTML = strHTML;
+    }
+}
+
+/**********************************************************************************************/
+function hideActions()
+/**********************************************************************************************/
+{
+	if ( G_nSelectedMethod != 0 )
+	{
+		document.getElementById( "idmodgroupAll" ).innerHTML = "";
+	}
+	else
+	{
+		for (var i=0; i<4; i++)
+		{
+			document.getElementById( "idmodgroup" + i ).innerHTML = "";
+		}
+	}
+}
+/**********************************************************************************************/
+function onSetGroupCombo(nModule)
+/**********************************************************************************************/
+{
+	if ( G_nSelectedMethod != 0 )
+	{
+		var selObj = document.getElementById( "idSelGroup" );
+		var selIndex = selObj.selectedIndex;
+		g_strPort2Group = selObj.options[selIndex].text;	
+	}
+	else
+	{
+		var selObj = document.getElementById( "idSelGroup" );
+		var selIndex = selObj.selectedIndex;
+		g_arPort2Group[ nModule ] = selObj.options[selIndex].text;		
+	}
+	updateGroupsUI();
+	showSave();
+}
+
+/**********************************************************************************************/
+function onSetGroupText(nModule)
+/**********************************************************************************************/
+{
+	if ( G_nSelectedMethod != 0 )
+	{
+		var strGroup = document.getElementById( "idInputAll" ).value;
+		if ( strGroup == "" )
+		{
+			// Group has been removed for this Module/SIM
+			var strLastGroup = g_strPort2Group;
+			g_strPort2Group = null;
+
+			if ( g_mapGroupSet[ strLastGroup ] < 2 )
+			{
+				delete g_mapGroupSet[ strLastGroup ];
+			}
+		}
+		else
+		{
+			g_strPort2Group = strGroup;
+			g_mapGroupSet[ strGroup ]++;
+		}
+		
+		// Update the available set of groups for the combo box
+		var nCount = 0;
+		g_arGroups = new Array();
+		for (var strGroup in g_mapGroupSet)
+		{
+			g_arGroups[nCount++] = strGroup;
+		}
+		
+	}
+	else
+	{
+		var strGroup = document.getElementById( "idInput" + nModule ).value;
+		if ( strGroup == "" )
+		{
+			// Group has been removed for this Module/SIM
+			var strLastGroup = g_arPort2Group[ nModule ];
+			g_arPort2Group[ nModule ] = null;
+
+			if ( g_mapGroupSet[ strLastGroup ] < 2 )
+			{
+				delete g_mapGroupSet[ strLastGroup ];
+			}
+		}
+		else
+		{
+			g_arPort2Group[ nModule ] = strGroup;
+			g_mapGroupSet[ strGroup ]++;
+		}
+		
+		// Update the available set of groups for the combo box
+		var nCount = 0;
+		g_arGroups = new Array();
+		for (var strGroup in g_mapGroupSet)
+		{
+			g_arGroups[nCount++] = strGroup;
+		}
+	}	
+    // Update the UI info and show the submit button
+    updateGroupsUI();
+    showSave();
+}
+
+/**********************************************************************************************/
+function onNewGroup(nModule)
+/**********************************************************************************************/
+{
+	hideActions();
+	if ( G_nSelectedMethod != 0  )
+	{
+		var strHTML = "<input id='idInputAll' size='15' />"
+		document.getElementById( "idgroupAll"  ).innerHTML = strHTML;
+		strHTML = "<a href='#' onClick='onSetGroupText()'>Set</a>";
+		document.getElementById( "idmodgroupAll" ).innerHTML = strHTML;
+	}
+	else
+	{
+		
+		var strHTML = "<input id='idInput" + nModule +"' size='15' />"
+		document.getElementById( "idgroup" + nModule ).innerHTML = strHTML;
+		strHTML = "<a href='#' onClick='onSetGroupText(" + nModule + ")'>Set</a>";
+		document.getElementById( "idmodgroup" + nModule ).innerHTML = strHTML;
+	}
+}
+
+/**********************************************************************************************/
+function onSelGroup(nModule)
+/**********************************************************************************************/
+{
+    hideActions();
+	var strHTML = "<select id='idSelGroup'>";
+    for (var i=0; i<g_arGroups.length; i++)
+    {
+        strHTML += "<option>" + g_arGroups[i] + "</options>";
+    }
+    strHTML += "</select>";
+	
+	if ( G_nSelectedMethod != 0  )
+	{
+		document.getElementById( "idgroupAll" ).innerHTML = strHTML;
+		strHTML = "<a href='#' onClick='onSetGroupCombo()'>Set</a>";
+		document.getElementById( "idmodgroupAll" ).innerHTML = strHTML;		
+	}
+	else
+	{    
+		document.getElementById( "idgroup" + nModule ).innerHTML = strHTML;
+		strHTML = "<a href='#' onClick='onSetGroupCombo(" + nModule + ")'>Set</a>";
+		document.getElementById( "idmodgroup" + nModule ).innerHTML = strHTML;
+	}
+}
+
+</SCRIPT>
+
+<BODY onLoad="init()" bgcolor="white" onselectstart="return false;" ondragstart="return false;">
+<h1>SMS Server Channel Selection</h1>
+<hr>
+
+<font face=Arial size=2>
+<div id="selectcard"></div>
+
+<div id="update_settings"></div>
+<br>
+
+<div id="mode"></div>
+<br>
+
+<div id="DIV_Values">
+</div>
+
+<br>
+<div id="DIV_SaveConfig">
+</div>
+
+</font>
+
+</BODY>
+</HTML>

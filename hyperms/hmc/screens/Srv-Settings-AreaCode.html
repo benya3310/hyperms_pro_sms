@@ -1,0 +1,89 @@
+<HTML>
+<STYLE type=text/css>TABLE {
+	BORDER-RIGHT: #000000 1px solid; BORDER-TOP: #000000 1px solid; BORDER-LEFT: #000000 1px solid; BORDER-BOTTOM: #000000 1px solid; border-spacing: 0px; cell-spacing: 0px
+}
+TD {
+	PADDING-RIGHT: 0.5em; PADDING-LEFT: 0.5em; FONT-SIZE: 10pt; PADDING-BOTTOM: 2px; PADDING-TOP: 2px; FONT-FAMILY: Arial, Helvetica, sans-serif; WHITE-SPACE: nowrap
+}
+</STYLE>
+<BODY bgcolor="white" onLoad="init();" ondragstart="return false;">
+<SCRIPT language=javascript src="../utils/utilfuncs.js"></SCRIPT>
+<script type="text/javascript">
+var G_strReqID = "349";
+
+function init()
+{
+    var strCommand = "LocalAreaCode /I" + G_strReqID;
+	parent.frames[0].SendCommand( strCommand );
+}
+
+function saveAreaCode()
+{
+    var strAreaCode	= document.getElementById("areaCode").value;
+	
+    var strCommand = "LocalAreaCode /I" + G_strReqID + "/G" + strAreaCode;
+    parent.frames[0].SendCommand( strCommand );
+	var strStatus = "<font size='2'>Updating local area code...</font>";
+	document.getElementById("DIV_status_line").innerHTML = strStatus;
+}
+
+function clickIt( obj, strFile, bPressed, nDebug )
+{
+    obj.bPressed = bPressed;
+    var str = 'document.all.' + obj.name + '.src = "' + strFile + '"';
+    //if (nDebug==1) alert(str);
+    eval( str );
+}
+
+function OnData( strMessage )
+{
+    var strCommand = new String( strMessage );
+    var strParam = strCommand.split( " " );
+    var strSection;
+    
+    var packStr = new PacketString( strParam[1] );
+	var strID = packStr.getSection( "I" );
+	if ( strID != G_strReqID )
+	{
+		return;
+	}
+	
+	if ( strParam[0] == "LocalAreaCodeReply" )
+	{
+		var strAreaCode = packStr.getSection( "g" );
+		if ( strAreaCode != null )
+		{
+			document.getElementById("areaCode").value = strAreaCode;
+			return;
+		}
+		var strStatus = "<font size='2'>Local area code updated.</font>";
+		document.getElementById("DIV_status_line").innerHTML = strStatus;
+	}
+}
+</script>
+
+<font size=4 face="Arial">Local Area Code</font>
+<hr>
+<font face="Arial">
+<table border=0>
+<tr>
+    <td>Current Local Area Code</td>
+    <td><INPUT TYPE=text size=6 id="areaCode"></td>
+</tr>
+<tr>
+    <td>
+    <!--
+    <a href='javascript:saveIP()'>Save as default connection</a>
+    -->
+    <img name="bnext" src="./Up-SaveSettings.jpg"
+    onmousedown="clickIt( this, './Down-SaveSettings.jpg', 1 );"
+    onmouseup="if (this.bPressed==1) {clickIt( this, './Up-SaveSettings.jpg', 0 ); saveAreaCode(); }"
+    onMouseOver="style.cursor='hand'" 
+    onmouseout="clickIt( this, './Up-SaveSettings.jpg', 0 );">
+    </td>
+</tr>
+</table>
+<br>
+<div id="DIV_status_line"></div></td>
+</BODY>
+</HTML>

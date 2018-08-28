@@ -1,0 +1,174 @@
+<html>
+<head>
+	<SCRIPT language=javascript src="../utils/utilfuncs.js"></SCRIPT>
+	<SCRIPT language=javascript src="../utils/alloc_logic.js"></SCRIPT>
+	<LINK REL=StyleSheet HREF="default.css" TYPE="text/css" MEDIA=screen>
+	<STYLE type=text/css>TABLE {
+	BORDER-RIGHT: #000000 1px solid; BORDER-TOP: #000000 1px solid; BORDER-LEFT: #000000 1px solid; BORDER-BOTTOM: #000000 1px solid; border-spacing: 0px;
+	}
+	TD {
+	PADDING-RIGHT: 0.5em; PADDING-LEFT: 0.5em; FONT-SIZE: 10pt; PADDING-BOTTOM: 2px; PADDING-TOP: 2px; FONT-FAMILY: Arial, Helvetica, sans-serif; WHITE-SPACE: nowrap
+	}
+</STYLE>
+</head>
+<SCRIPT>
+// Received command from applet
+
+function getGWConfig()
+{
+    parent.frames[0].SendCommand( "GetGWConfig" );
+}
+function get_l_params(packStr)
+{
+	var l_param = packStr.getSection( "l" );
+	if (l_param == undefined ) l_param = "";
+    var l_arrray = l_param.split("|");    
+    var l_obj = {};
+    for (i=0; i<l_arrray.length ; i++)
+    {
+    	try{
+    		var rec = l_arrray[i].split("=");
+			var slot = G_configInfo.calcSlotNumber(rec[0]);
+			l_obj[slot] = rec[1];
+		}
+		catch(e){
+			l_obj[slot] = undefined;
+		}
+    }
+    return l_obj;
+}
+function OnData( strMessage )
+{
+	//console.log(strMessage);
+    var strCommand = new String( strMessage );
+    var strParam = strCommand.split( " " );
+    var strSection;
+    
+    var packStr = new PacketString( strParam[1] );
+    
+    
+
+
+    switch ( strParam[0] )
+    {
+        
+        
+        case "GWError":
+        {
+            alert( "Got error message:" + strMessage );
+            break;
+        }
+        
+        case "GWConfigInfo":
+        {
+			var objSelect = G_configInfo.getSelectCardHTML( packStr, "CG4.0,CC4.0,CT4.1,CU4.1", "", "onSelectCard" );
+            var strHTML = objSelect.m_strHTML;
+			var strSelCard = objSelect.m_strSelCard;
+			var strSelCardType = objSelect.m_strSelCardType;
+			var arCards = G_configInfo.getCardsOfType(packStr, "CG4.0,CC4.0,CT4.1,CU4.1");
+			var l_params = get_l_params(packStr);
+			generateCardstable( arCards, l_params);
+          if ( strSelCard != null)
+          {
+            //gotoPHP( strHTML );
+          }
+          else
+          {
+            //document.getElementById("tbstatus").style.visibility = "hidden";
+          }
+            break;
+        }
+        
+        default:
+        {
+            //alert( "Got unknown message:" + strMessage );
+            break;
+        }
+    }
+}
+
+function generateCardstable( arCards, l_params)
+{
+
+	var str = "";
+	for (var i=0; i<arCards.length; i++)
+	{
+		str +=  arCards[i].m_nSlot+ ",";
+	}
+	
+	
+	var 	strHTML = '<br><table id="selSlotTbl"><tr><td><b>Slot </b></td>';
+    if ( str == "" )
+    {
+		strHTML += '<td width="210">No Card detected on this slot!</td>';
+    }
+    else
+    {
+		var nLastDeck = 0;
+		var nNumOfSIM = 4;
+		for (var i=0; i<arCards.length; i++ )
+		{				
+			var nSlot = arCards[i].m_nSlot;
+			
+			var nCurrDeck = Math.floor(nSlot / 16);
+			
+			if ( nCurrDeck != nLastDeck )
+			{
+				nLastDeck = nCurrDeck;
+				strHTML += '</tr><tr>';
+			}
+
+			//console.log(l_params[nSlot]);
+			if ( l_params[nSlot] == 10 )
+			{
+				nNumOfSIM = 10;
+			}
+			
+			
+			var sims =  (l_params[nSlot]==undefined)? 16:  l_params[nSlot]*4;
+			strHTML += '<td width="20">';
+			strHTML += '<input type=CHECKBOX id="c' + i + '" value="' + nSlot+ '">' + nSlot;
+			strHTML += '</td>';																		
+		}
+
+		strHTML += '</tr><tr><td><b>SIMs </b></td>';
+	    for (var i=0; i<arCards.length; i++ )
+		{
+			var nSlot = arCards[i].m_nSlot;
+			var sims =  (l_params[nSlot]==undefined)? 16:  l_params[nSlot]*4;
+			strHTML += '<td width="20" align="center">&nbsp;&nbsp;&nbsp;';
+			strHTML += sims;
+			strHTML += '</td>';																		
+		}
+    }
+    
+    strHTML += '</tr></table></font><br>';
+	gotoPHP( strHTML, nNumOfSIM );
+}
+function onSelectCard( strCard, strCardType )
+{
+    var nSlot = G_configInfo.calcSlotNumber( strCard );	 
+    document.getElementById("update_settings").innerHTML = getSelCardText( nSlot, strCardType );
+	alert( document.getElementById("update_settings").innerHTML  );
+}
+
+function gotoPHP( strHTML, nNumOfSIM )
+{
+	var strServerName	= parent.frames[0].getServerIP();
+	var strPassword		= parent.frames[0].getPassword();
+	
+	var strLoc = "http://" + strServerName + "/cb/Scheduler.php?IP="+ strServerName+"&password=" + strPassword;
+
+    // Do not escape strHTML - it make the url to long for IE 6 and 7, and they
+    // just drop the request, leaving the user with a blank page.
+	strLoc    += "&sims="+nNumOfSIM+"&strHTML=" + strHTML;
+    
+    strLoc = strLoc.replace("#","%23");
+	document.location.href = strLoc;
+}
+</script>
+<body onLoad="getGWConfig();">
+	<div id="selectcard"></div>
+	<div id="update_settings"></div>
+</body>
+</html>

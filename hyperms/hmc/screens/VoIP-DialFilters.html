@@ -1,0 +1,265 @@
+<HTML>
+<HEAD><TITLE>CGW - Configuration</TITLE></HEAD>
+<link type="text/css" href="../default.css" rel="stylesheet">
+<STYLE type=text/css>
+a:link {color: #0000ff; text-decoration: underline; }
+a:active {color: #0000ff; text-decoration: underline; }
+a:visited {color: #0000ff; text-decoration: underline; }
+a:hover {color: #00dd00; text-decoration: none; }
+</STYLE>
+<SCRIPT language=javascript src="../utils/utilfuncs.js"></SCRIPT>
+<SCRIPT language=javascript src="../utils/alloc_logic.js"></SCRIPT>
+<SCRIPT>
+// Received command from applet
+var G_bSaving = 0;
+var	G_arNames = new Array();
+var	G_arAlloc = new Array();
+
+var G_strLastSelectedCard;
+var G_nDialFiltersTimerID;
+
+function onSelectCard( strCard, strType )
+{
+    var nSlot = G_configInfo.calcSlotNumber( strCard );
+    G_strLastSelectedCard = strCard;
+    getInfo( strCard );
+    document.getElementById("update_settings").innerHTML = getSelCardText( nSlot, strType );
+}
+
+/*
+function hideSave()
+{
+    document.getElementById("DIV_SaveConfig").innerHTML = "";
+}
+*/
+
+function showSave()
+{
+    /*
+    if ( document.getElementById("DIV_SaveConfig").innerHTML == "Saving configuration..." )
+    {
+        return;
+    }
+    */
+	
+    var strSave = utils_getButtonHTML( "saveDialFiltersConfig()", "SaveSettings.jpg" );
+    saveConfigDiv( strSave );
+	
+}
+
+function saveDialFiltersConfig()
+{
+	G_bSaving = 1;
+	//alert( strCommand );
+	//return;
+	var strCommand = "CardDialFilters /A";
+    strCommand += G_strLastSelectedCard;
+    strCommand += "/I213/G";
+	
+	var strNames = "";
+	for (var i=0; i<G_arAlloc.length; i++)
+	{
+		strNames += G_arAlloc[ i ];
+		if ( i != G_arAlloc.length-1 )
+		{
+			strNames += ",";
+		}
+	}
+	
+	strCommand += strNames;
+	
+    parent.frames[0].SendCommand( strCommand );
+	saveConfigDiv("Saving configuration...");
+    
+}
+function saveConfigDiv( strMsg )
+{
+	document.getElementById("DIV_SaveConfig").innerHTML = strMsg;	
+}
+function OnData( strMessage )
+{
+	//alert( strMessage );
+    var strCommand = new String( strMessage );
+    var strParam = strCommand.split( " " );
+    var strSection;
+    
+    var packStr = new PacketString( strParam[1] );
+    
+    switch ( strParam[0] )
+    {
+        case "GWConfigInfo":
+        {
+			var objSelect = G_configInfo.getSelectCardHTML( packStr, "MG.0", "VoIP card", "onSelectCard" );
+            var strHTML = objSelect.m_strHTML;
+			var strSelCard = objSelect.m_strSelCard;
+			var strSelCardType = objSelect.m_strSelCardType;
+            document.getElementById("selectcard").innerHTML = strHTML;
+            if ( strSelCard != null )
+            {
+                onSelectCard( strSelCard, strSelCardType );
+            }            
+            else
+            {
+				document.getElementById("DIV_DialFilters").innerHTML = "No VoIP card was found.";
+            }
+            break;
+        }
+        
+        case "GWError":
+        {
+            saveConfigDiv("Error saving configuration.");
+            break;
+        }
+
+        case "CardDialFiltersReply":
+        {
+            clearTimeout(G_nDialFiltersTimerID);
+            var strNames	= packStr.getSection( "n" );
+            G_arNames		= strNames.split( "," );
+            var strAlloc	= packStr.getSection( "c" );
+            G_arAlloc		= strAlloc.split( "," );
+            var strApps		= packStr.getSection( "a" );
+            var arApps		= strApps.split( "," );
+			
+            displayDialFiltersTable( arApps );
+			
+			if ( G_bSaving == 1 )
+			{
+				G_bSaving = 0;
+				saveConfigDiv("Configuration saved.");
+			}
+        }
+        
+        default:
+        {
+            // Send this to TCPServer log file ? internal log file ?
+            //alert( "Got unknown message:" + strMessage );
+            break;
+        }
+    }
+}
+
+var G_nInEdit = 0;
+function editName( nIndex )
+{
+	if ( G_nInEdit == 1 )
+	{
+		return;
+	}
+	
+	G_nInEdit = 1;
+	//hideSave();
+	var strID = "FilterID" + nIndex;
+	var objTD = document.getElementById( strID );
+	
+	var strCurName = objTD.innerHTML;
+	
+	var strComboHTML = "<select id='ComboID" + nIndex + "'>";
+	strComboHTML += "<option>- No Filter -</option>";
+	
+	for (var i=0; i<G_arNames.length; i++)
+	{
+		strComboHTML += "<option ";
+		if ( strCurName == G_arNames[ i ] )
+		{
+			strComboHTML += "selected";
+		}
+		strComboHTML += ">" + G_arNames[ i ] + "</option>";
+	}
+	strComboHTML += "</select>"
+	
+	objTD.innerHTML = strComboHTML;
+	
+	var strID = "ActionID" + nIndex;
+	var objActionTD = document.getElementById( strID );
+	var strActionHTML = "<a href='javascript:saveName(" + nIndex + ")'>Save</a>";
+	objActionTD.innerHTML = strActionHTML;
+}
+
+function saveName( nIndex )
+{
+	var strID = "FilterID" + nIndex;
+	var objTD = document.getElementById( strID );
+	
+	var strComboID = "ComboID" + nIndex;
+	var objGroup = document.getElementById( strComboID );
+	
+	var strSelHTML = objGroup.options[objGroup.selectedIndex].text;
+	if ( strSelHTML == "- No Filter -" )
+	{
+		strSelHTML = "";
+	}
+	objTD.innerHTML = strSelHTML;
+	G_arAlloc[ nIndex ] = strSelHTML;
+	var strID = "ActionID" + nIndex;
+	var objActionTD = document.getElementById( strID );
+	var strActionHTML = "<a href='javascript:editName(" + nIndex + ")'>Edit</a>";
+	objActionTD.innerHTML = strActionHTML;
+	
+    showSave();
+	G_nInEdit = 0;
+}
+
+function displayDialFiltersTable( arApps )
+{
+    var strHTML = "<table class='headerScollable' border='0' cellspacing='0' ><thead>";
+    strHTML += "<tr><td>Channel</td>";
+	strHTML += "<td width='150'>Application</td>";
+	strHTML += "<td width='120'>Filter Name</td>";
+	strHTML += "<td width='90' >Action</td>";
+    strHTML += "</thead><tbody class='scrollContent'>";
+
+	var arColors = new Array();
+	arColors[ 0 ] = "e0e0e0";
+	arColors[ 1 ] = "f0f0f0";
+	
+	for (var i=0; i<G_arAlloc.length; i++)
+    {
+        strHTML += "<tr bgcolor='#" + arColors[ i%2 ] + "'><td> " + (i+1) + "</td>";
+        strHTML += "<td>" + arApps[ i ] + "</td>";
+        strHTML += "<td id='FilterID" + i + "'>" + G_arAlloc[ i ] + "</td>";
+        strHTML += "<td id='ActionID" + i + "'><a href='javascript:editName(" + i + ")'>Edit</a></td></tr>";
+    }
+	
+	strHTML += "</tbody></table>";
+	
+    document.getElementById("DIV_DialFilters").innerHTML = strHTML;
+	
+}
+
+function getInfo( strAddress )
+{
+    var strCommand = "CardDialFilters /A";
+    strCommand += strAddress;
+    strCommand += "/I278";
+    parent.frames[0].SendCommand( strCommand );
+    G_nDialFiltersTimerID = setTimeout("getInfo('" + strAddress + "')",4000);
+}
+
+function init()
+{
+	parent.frames[0].SendCommand( "GetGWConfig" );
+}
+</SCRIPT>
+
+<BODY onload="init();" bgcolor="white" onselectstart="return false;" ondragstart="return false;">
+<font size=4 face="Arial">VoIP Dial Filters</font>
+<hr>
+
+<font face=Arial size=2>
+<div id="selectcard" style="display:none"></div>
+
+<div id="update_settings" style="display:none"></div>
+<br>
+
+<div class="tableContainer" id="DIV_DialFilters" style="border-style: solid; border-width: thin; width: 480px; height: 400px;">
+</div>
+
+<br>
+<div id="DIV_SaveConfig">
+</div>
+
+</font>
+
+</BODY>
+</HTML>

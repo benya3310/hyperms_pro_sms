@@ -1,0 +1,254 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+	<head>
+		
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+		
+		<title>LCR Resource Map</title>
+
+		<link type="text/css" href="../default.css" rel="stylesheet">
+				
+		<script src="../js/prototype.js" 	type="text/javascript"></script>
+		<script src="../js/prototype.addon.js" type="text/javascript"></script>
+		
+		<script src="../js/LCRGuiUtils.js" 	type="text/javascript"></script>
+		<script src="../js/utilfuncs.js" 	type="text/javascript"></script>
+		<script src="../js/alloc_logic.js" 	type="text/javascript"></script>
+		<script src="../js/ConfigInfo.js" 	type="text/javascript"></script>		
+		<script src="../js/Lcr.Framework.ResourceMap.js" type="text/javascript"></script>
+		
+	</head>
+	<body onselectstart="return false;">
+		
+		<font size=4 face="Arial">LCR Resource Map</font>
+		<div>&nbsp;</div>
+<!--		<h3>LCR Resource Map</h3>		-->		
+			<span id='selectDesc'></span>
+			<br/>
+			<div id='groupAction'>
+				&nbsp;&nbsp;&nbsp;<span>Set Group:</span> 
+
+				<input type=button value='Set' id='setGroupButton'>
+				
+				&nbsp;&nbsp;&nbsp;<span>Set Resource Type:</span> 
+				<select id='applyResTypeList'>
+					<option value='0'>Bi Directional</option>
+					<option value='1'>Outbound Only</option>
+				</select>
+				<input type=button value='Set' id='setResTypeButton'>
+				</div>
+		</div>
+		<div id="prgrsBr" class="ProgressBar"></div>
+		<div id='channelsArea'></div>
+		
+		
+	</body>
+	<script type="text/javascript">
+		
+		var channelsInfo = new ChannelsInfo();
+		var selectionRange = new SelectionRange();
+		var arNewSettings = [];
+		
+		function OnData(strMessage){
+			
+		    var strCommand = new String( strMessage );
+		    var arParam = strCommand.split( " " );
+			
+			if ( arParam.length < 1 ){return;}
+			if ( arParam[0] == "GWError"){return;}
+			var packStr = new PacketString( arParam[ 1 ] );
+			
+			var strID = packStr.getSection( "I" );
+			
+			if (arParam[0] == "GWConfigInfo"){
+            
+                	if ( packStr.getSection( "c" ).indexOf("LCR") == -1 )
+                    {
+                        // no LCR
+                          $('setGroupButton').disabled = true;
+                        document.getElementById("channelsArea").innerHTML = "<hr><br>No LCR was found.";
+                        return;
+                    
+                    }
+				
+                G_configInfo.processConfigInfo(packStr);
+            
+                GLBCardConfig = new LCRConfig(arParam[1]);
+				
+				SendCommand(LCRGroupCollection.queryCommand);
+			}
+			
+			if (strID == "777"){
+				LCRGroupCollection.parseGroups(strMessage);
+				generateGroupList();
+				SendCommand(channelsInfo.queryString);
+				
+			}
+			if (strID == "897"){
+				channelsInfo.bindData(packStr.getSection("R"));
+				displayLcrChannelsData();
+			}
+			
+			if (strID == "997"){
+				SaveNewSettings();
+			}
+		}
+		
+		
+		function SaveNewSettings(){
+			
+			var newSetCommand = arNewSettings.pop();
+			
+			if (newSetCommand)
+				SendCommand(newSetCommand);
+			if (arNewSettings.length > 0)
+				$('prgrsBr').innerHTML = 'Saving New Settings. ' + arNewSettings.length + ' item(s) remained.';
+			else if (arNewSettings.length == 0) {
+				$('prgrsBr').innerHTML = 'Saving completed!';
+				StartConfigInitializationProcess();
+			}
+		}
+				
+		function displayLcrChannelsData(){
+			// remove dom children
+			Element.update('channelsArea','');
+			
+			var channels = channelsInfo.channels;
+			for (var x=0; x < channels.length; x++){
+				createChannelInfoBox(channels[x], channelsInfo.getNameByAddress(channels[x].remoteI2CAddress));
+			}
+			
+		}
+
+		
+		function createChannelInfoBox(channel, allocClassName){
+			var newDiv = $New ('div', 'box_' + channel.resourceNumber, 'channelInfo', 'click',channelBoxClicked,false);
+			
+			if (allocClassName){
+				allocClassName = allocClassName.split(/\(/g)[0].replace('.','_');
+				newDiv.addClassName(allocClassName);
+			}
+			newDiv.innerHTML = channel.innerHTML();
+			
+			$('channelsArea').appendChild(newDiv);
+		}
+		
+		function channelBoxClicked(evt){
+			var clickedElement = Event.element(evt);
+			if (clickedElement.tagName.toLowerCase() != 'div')
+				clickedElement = clickedElement.parentNode;
+			var indexId = clickedElement.id.replace('box_','');
+			
+			if (evt.shiftKey)
+            {
+				selectionRange.onSelection(indexId);
+                 markSelection(selectionRange.elementsRange());
+            }
+			else
+                if (evt.ctrlKey)
+                    selectionRange.onCtrlSelection(indexId);
+                else
+                {
+                    selectionRange.reset(indexId);
+                        
+                }
+				
+			$('selectDesc').innerHTML = selectionRange.toString();
+			
+			markSelection(selectionRange.elementsRange());
+			
+			Element.show('groupAction');
+		}
+
+		function markSelection(divs){
+            
+			unMarkOldSelections();
+			try{
+				for (var x=0; x < divs.length; x++)
+					$(divs[x]).addClassName('channelInfoSelected');
+			}
+			catch(e){}
+		}
+		
+		function unMarkOldSelections(){
+			try{
+				var divs = document.getElementsByClassName('channelInfoSelected', 'channelsArea');
+				
+				for (var x=0; x < divs.length; x++)
+					Element.removeClassName($(divs[x]),'channelInfoSelected');
+			}
+			catch(e){}
+		}
+		
+		function applyGroup(evt){
+			arNewSettings.clear();
+			var firstChannel, lastChannel, newGroup, newResType;
+			
+			firstChannel = new Number( selectionRange.startElementId );
+			lastChannel = new Number( selectionRange.endElementId );
+			if (lastChannel == 0)
+				lastChannel = firstChannel;
+				
+			newGroup = $('applyGroupList').value;
+			if ( firstChannel > 0 ){  //check if any shift selection was made 
+                for(var x = firstChannel; x <= lastChannel; x++){
+                    var str = 'SetLCRInfo /I997/r' + x + '/g' + newGroup + '/t' + channelsInfo.channels[x-1].resourceType;
+                    arNewSettings.push(str);
+                }	
+            }
+            if ( selectionRange.ctrlElementIds.length ) { //check if any ctrl selection was made
+                selectionRange.ctrlElementIds.each(function(item) {
+                    var str = 'SetLCRInfo /I997/r' + item + '/g' + newGroup + '/t' + channelsInfo.channels[item-1].resourceType;
+                    arNewSettings.push(str);
+                });
+            }            
+			SaveNewSettings();
+            selectionRange.reset();
+
+		}
+		
+		function applyResourceType(evt){
+			arNewSettings.clear();
+			var firstChannel, lastChannel, newGroup, newResType;
+			firstChannel = selectionRange.startElementId;
+			lastChannel = selectionRange.endElementId;
+			newResourceType = $('applyResTypeList').value;
+            
+			if ( firstChannel > 0 ){ //check if any shift selection was made 
+                for(var x = firstChannel; x <= lastChannel; x++){
+                    var str = new String().format('SetLCRInfo /I997/r{0}/g{1}/t{2}', x, channelsInfo.channels[x-1].groupNumber, newResourceType);
+                    arNewSettings.push(str);
+                }
+            }    
+            if ( selectionRange.ctrlElementIds.length ) { //check if any ctrl selection was made 
+                selectionRange.ctrlElementIds.each(function(item) {
+                    var str = new String().format('SetLCRInfo /I997/r{0}/g{1}/t{2}', item, channelsInfo.channels[item-1].groupNumber, newResourceType);
+                    arNewSettings.push(str);
+                });
+            }
+			
+			SaveNewSettings();		
+            selectionRange.reset();			
+		}
+		
+		function generateGroupList(){
+			
+			var listHTML = GroupComboRenderer('applyGroupList', 'newComboStyler', 'DVD-IN_HOT_SALE');
+			$('groupAction').insertBefore(
+				$New('span', 'groupListWrapper'), 
+				$('setGroupButton')
+			);
+			
+			$('groupListWrapper').innerHTML = listHTML;
+			
+		}
+		
+		Element.hide('groupAction');
+		
+		Event.observe('setGroupButton', 'click', applyGroup, false);
+		Event.observe('setResTypeButton', 'click', applyResourceType, false);
+		
+		StartConfigInitializationProcess();
+		
+	</script>
+</html>

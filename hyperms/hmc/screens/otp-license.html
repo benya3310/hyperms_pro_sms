@@ -1,0 +1,37 @@
+<html>
+<script>
+
+function loadLicense(name)
+{
+	
+	var strServerName	= parent.frames[0].getServerIP();
+	var strPassword		= parent.frames[0].getPassword();
+	var strLoc = "http://" + strServerName + "/license/?name=" + name + "&password=" + strPassword;
+
+    // Do not escape strHTML - it make the url to long for IE 6 and 7, and they
+    // just drop the request, leaving the user with a blank page.
+    strLoc = strLoc.replace("#","%23");
+	document.location.href = strLoc;
+	//document.getElementById("licframe").src = strLoc;
+}
+function licenseSelected()
+{
+	var name = document.getElementById('licselect').value;
+	loadLicense(name)
+}
+</script>
+
+<body onload="loadLicense('hyperid');">
+<!--
+<select id="licselect" onclick="licenseSelected()">
+  <option value="hyperconnect" selected>HyperConnect</option>
+  <option value="SMSServer">SMS Server</option>
+  <option value="WebSMS">Web SMS</option>
+</select>
+
+<iframe id="licframe" width="95%" height="90%" frameborder="0">
+  <p>Your browser does not support iframes.</p>
+</iframe>
+-->
+</body>
+</html>
