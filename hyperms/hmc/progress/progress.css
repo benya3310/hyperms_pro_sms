@@ -1,0 +1,51 @@
+#progress {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 400px;
+    margin-top: -50px;
+    margin-left: -200px;
+    text-align: center;
+}
+
+.progress {
+    text-align: center;
+}
+
+.progress .title {
+    margin: 0 0 10px 0;
+    font-weight: bold;
+}
+
+.progress .info {
+    margin: 10px 0 0 0;
+}
+
+.progress .indicator {
+    width: 100%;
+    height: 16px;
+    border: 1px solid #666;
+    text-align: left;
+    overflow: hidden;
+}
+
+.progress.spinning .indicator {
+    height: 64px;
+    border: none;
+    background-image: url(spinning.gif); /* 64px*/
+    background-position: top center;
+    background-repeat: no-repeat;
+}
+
+.progress .indicator .value {
+    width: 0%;
+    height: 100%;
+    background-image: url(progress.gif);
+}
+
+.progress.indeterminate .indicator .value {
+    width: 100%;
+    height: 100%;
+    background-image: url(progress-indeterminate.gif);
+}
+
