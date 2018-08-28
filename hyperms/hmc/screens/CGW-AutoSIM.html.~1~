@@ -1,0 +1,1234 @@
+<HTML>
+<HEAD><TITLE>Cellular Cards - Automatic SIM Management</TITLE></HEAD>
+<STYLE type=text/css>TABLE {
+	BORDER-RIGHT: #000000 1px solid; BORDER-TOP: #000000 1px solid; BORDER-LEFT: #000000 1px solid; BORDER-BOTTOM: #000000 1px solid; border-spacing: 0px; 
+}
+TD {
+	PADDING-RIGHT: 0.5em; PADDING-LEFT: 0.5em; FONT-SIZE: 10pt; PADDING-BOTTOM: 2px; PADDING-TOP: 2px; FONT-FAMILY: Arial, Helvetica, sans-serif; WHITE-SPACE: nowrap
+}
+</STYLE>
+<SCRIPT language=javascript src="../utils/utilfuncs.js"></SCRIPT>
+<SCRIPT language=javascript src="../utils/alloc_logic.js"></SCRIPT>
+<SCRIPT>
+
+var G_arBtnArray = new Array();
+var G_strID = "123";
+var G_strLastConfig;
+var G_strCardAddress;
+var G_strCardStatus   = "MultiSIM";
+var G_nOneSIMCounter  = 0;
+var G_arOneSIMResults = new Array();
+var G_arOneSIMSetTo   = new Array();
+var G_CallCountersSupported;
+var G_SimBlockingSupported;
+var G_ModulesCfgParams = new Array();
+var G_CurrentUpdatedModule;
+var G_bInSavingProcess = false;
+var G_nTimerID;
+var G_Reloading = 0;
+
+var G_nGetInfoCounter = 1;
+var G_strGetInfoPacket_g = "/g";
+var G_strGetInfoPacket_p = "/p";
+var G_nNumOfSIMCards =4;
+//keep table mode (1-module,2-card,3-system)
+var G_nTableMode = 1;
+var G_nAllCardsInfoTimerID   = 0;
+var G_nCurrentCardInfo       = 0;
+var G_bInAllCardsCheckLoop   = true;
+var G_arAddresses	   = new Array();
+var G_arTypes		   = new Array();
+var G_arCardsInfo      = new Object();
+var G_bMixedSystem     = false;
+var G_strFirstTR = "";
+/**********************************************************************************************/
+function checkIfMixedSystem()
+/**********************************************************************************************/
+{
+	//check if mixed crads of 10 and 4 sims or 2/4/6 modules parameters
+	for( var i=0; i<G_arAddresses.length; i++)
+	{
+		if (G_arCardsInfo[G_arAddresses[i]] == undefined || G_arCardsInfo[G_arAddresses[i]] == undefined)
+			continue;
+
+		if (G_arCardsInfo[G_arAddresses[i]].g != G_arCardsInfo[G_arAddresses[0]].g ||
+			G_arCardsInfo[G_arAddresses[i]].i != G_arCardsInfo[G_arAddresses[0]].i )
+		G_bMixedSystem = true;
+	}
+}
+/**********************************************************************************************/
+function getAllCardsInfo()
+/**********************************************************************************************/
+{
+	if ( G_nCurrentCardInfo == G_arAddresses.length )
+    {
+		
+        clearTimeout( G_nAllCardsInfoTimerID );				
+		G_bInAllCardsCheckLoop = false;		
+		getInfo();
+		//get all cards info done!
+		checkIfMixedSystem();
+        return;
+    }    
+	
+	var strCommand = "SendGenericPacket 3b:/A" + G_arAddresses[G_nCurrentCardInfo] + "/r1/Q";
+    strCommand += "/I"+ (10+G_nCurrentCardInfo);
+
+    
+	document.getElementById("DIV_SaveConfig").innerHTML += "..";
+    G_nCurrentCardInfo++;
+    //send
+    parent.frames[0].SendCommand( strCommand );
+    //console.log(strCommand);
+    G_nAllCardsInfoTimerID = setTimeout("getAllCardsInfo()",5000);
+    
+}
+/**********************************************************************************************/
+function FillCardType( strType )
+/**********************************************************************************************/
+{
+	var arTypeAddr = G_configInfo.getCardTypeAddresses( strType );
+        
+	if ( typeof( arTypeAddr ) != 'undefined' )
+	{
+		for (var i=0; i<arTypeAddr.length; i++)
+		{
+			G_arTypes.push( strType );
+		}
+		G_arAddresses = G_arAddresses.concat( arTypeAddr );
+	}
+}
+/**********************************************************************************************/
+function resetParamsGlobals()
+/**********************************************************************************************/
+{
+	G_strGetInfoPacket_g = "/g";
+	G_strGetInfoPacket_p = "/p"  ;
+}
+
+/**********************************************************************************************/
+function init()
+/**********************************************************************************************/
+{
+    getGWConfig();
+}
+
+/**********************************************************************************************/
+function getGWConfig()
+/**********************************************************************************************/
+{
+    parent.frames[0].SendCommand( "GetGWConfig" );
+}
+
+var G_strLastSelectedCard;
+var G_strLastSelectedCardType;
+var G_nAutoSIMTimerID;
+
+/**********************************************************************************************/
+function onSelectCard( strCard, strCardType )
+/**********************************************************************************************/
+{	
+	G_nGetInfoCounter = 1;
+    var nSlot = G_configInfo.calcSlotNumber( strCard );
+    G_strLastSelectedCard     = strCard;
+    G_strLastSelectedCardType = strCardType;
+    document.getElementById("update_settings").innerHTML = getSelCardText( nSlot, strCardType );
+	document.getElementById("DIV_SaveConfig").innerHTML = "";
+	
+	if ( strCardType != "CG4.0" && strCardType != "CU4.1" && strCardType != "CC4.2")
+	{
+		var strHTML = "<table><tr><td>This feature is not supported by this (" + strCardType + ") card.</td></tr></table>";
+		document.getElementById("DIV_AutoSIM").innerHTML = strHTML;
+		return;
+	}
+	
+	if ( !G_bInAllCardsCheckLoop )
+	{	
+		G_CallCountersSupported = 0;
+		G_SimBlockingSupported = 0;
+		G_Reloading = 0;
+		G_strCardAddress = strCard;
+		getInfo(strCard);
+	}
+	else
+	{	
+		document.getElementById("DIV_SaveConfig").innerHTML = "Processing cards information,please wait...";
+		getAllCardsInfo();
+	}
+	//document.getElementById( "DIV_AutoSIM" ).innerHTML = "";
+    document.getElementById("DIV_SaveConfig").innerHTML = "Getting information...";
+}
+
+/**********************************************************************************************/
+function OnData( strMessage )
+/**********************************************************************************************/
+{
+	var strCommand = new String( strMessage );
+    var strParam = strCommand.split( " " );
+    var strSection;
+    alert(strCommand);
+    var packStr = new PacketString( strParam[1] );
+	
+    switch ( strParam[0] )
+    {
+		
+        case "GWConfigInfo":
+        {
+			var objSelect = G_configInfo.getSelectCardHTML( packStr, "CG4.0,CC4.0,CT4.1,CU4.1,CC4.2", "Select cellular card", "onSelectCard" );
+            var strHTML = objSelect.m_strHTML;
+			var strSelCard = objSelect.m_strSelCard;
+			var strSelCardType = objSelect.m_strSelCardType;
+			document.getElementById("selectcard").innerHTML = strHTML;
+			//get all cards addresses for global volume set
+		   FillCardType( "CG4.0" );
+		   FillCardType( "CU4.1" );
+			if ( strSelCard != null )
+			{
+				onSelectCard( strSelCard, strSelCardType );
+			}
+			break;
+        }
+        
+        case "Ack":
+        {
+        	var strID = packStr.getSection( "A" );
+        	if ( G_strLastSelectedCard != strID && G_nTableMode != 3)
+        		return;
+			if ( G_strCardStatus == "SaveOneSIM" )
+			{
+				saveOneSIMData();
+			}
+			else
+			{
+				if ( G_bInSavingProcess )
+				{
+					clearTimeout( G_nTimerID );
+					G_CurrentUpdatedModule ++;
+					while ( G_CurrentUpdatedModule <= 4 )
+					{
+						if ( G_nTableMode == 1  && G_ModulesCfgParams[ G_CurrentUpdatedModule ] != "" )
+						{
+							G_nTimerID = setTimeout(setSaveAckTimer, 15000);
+							SendModuleConfig ( G_strLastSelectedCard, G_CurrentUpdatedModule, G_ModulesCfgParams[ G_CurrentUpdatedModule ]);
+							return;
+						}
+						else
+						{
+							if ( G_nTableMode == 2 )
+							{
+								//send same first confige line to all modules
+								G_nTimerID = setTimeout(setSaveAckTimer, 15000);
+								SendModuleConfig ( G_strLastSelectedCard, G_CurrentUpdatedModule, G_ModulesCfgParams[ 1 ]);
+								return;
+							}
+							if ( G_nTableMode == 3 )
+							{
+								//send same first confige line to all modules of all cards
+								if (G_CurrentUpdatedCard <G_arAddresses.length)
+								{
+									G_nTimerID = setTimeout(setSaveAckTimer, 15000);
+									SendModuleConfig ( G_arAddresses[G_CurrentUpdatedCard], G_CurrentUpdatedModule, G_ModulesCfgParams[ 1 ]);
+									if ( G_CurrentUpdatedModule == 4 )
+									{
+										G_CurrentUpdatedCard++;
+										G_CurrentUpdatedModule=0;
+									}
+									return;
+								}
+							}
+						}
+						G_CurrentUpdatedModule ++;
+					}
+					G_Reloading = 1;
+					G_CallCountersSupported = 0;
+					G_SimBlockingSupported = 0;
+					document.getElementById("DIV_SaveConfig").innerHTML = "Reloading...";
+					getInfo( G_strLastSelectedCard );
+					G_bInSavingProcess = false;
+				}
+			}	
+			break;
+        }
+        
+        case "GWError":
+        {
+			var strID = packStr.getSection( "I" );
+			var nID = parseInt ( strID );
+			
+			if ( ( nID >= 990 ) && ( nID <= 999 ) && ( G_bInSavingProcess ) )
+			{
+				G_bInSavingProcess = false;
+				clearTimeout( G_nTimerID );
+				document.getElementById("DIV_SaveConfig").innerHTML = "Error saving configuration.";
+				return;
+			}
+			
+			if ( strID == G_strID )
+			{
+				
+				//there are 3 options: 1)Multi SIM. 2)One SIM. 3)Feature not supported.
+				if ( G_strCardStatus == "MultiSIM" )
+				{
+					//we should move to next check - it might be one sim card
+					getOneSIMData()
+					G_strCardStatus = "OneSIM";
+					return;
+				}
+				else
+				{
+					if ( G_strCardStatus == "SaveOneSIM" )
+					{
+						G_strCardStatus = "MultiSIM";//back to startup status
+						document.getElementById("DIV_SaveConfig").innerHTML = "Error saving configuration.";
+						return;
+					}
+					else
+					{
+						resetOneSIMCounter();			
+						document.getElementById("DIV_SaveConfig").innerHTML = "";
+						//clearTimeout(G_nAutoSIMTimerID);
+						var strHTML = "<table><tr><td>This feature is not supported by this card.</td></tr></table>";
+						document.getElementById("DIV_AutoSIM").innerHTML = strHTML;
+						return;
+					}
+				}
+			}
+            document.getElementById("DIV_SaveConfig").innerHTML = "Error resetting counter (" + strMessage + ")";
+            break;
+        }
+		case "GenericReply":
+		{			
+			var strID = packStr.getSection( "A" );
+        	if ( G_strLastSelectedCard != strID )
+        		return;
+			//GenericReply /#3c/@37/I121/r1/g0/i0
+			if ( packStr.getSection("#") != "3c" )
+				return;
+			G_arOneSIMResults[ G_nOneSIMCounter-1 ] = packStr;
+			getOneSIMData();
+			break;
+		}
+		case "MultiSIMReply":
+		{
+			strInfo     = packStr.getSection( "l" );
+			G_nNumOfSIMs = ( strInfo != null ) ? strInfo : 4;
+
+			var strID = packStr.getSection( "A" );
+        	if ( G_strLastSelectedCard != strID )
+        		return;
+			//alert("MultiSIMReply");
+			var g = packStr.getSection( "g" );
+			var strFullInfo  = G_strGetInfoPacket_g;
+			strFullInfo  += G_strGetInfoPacket_p;
+			strFullInfo  +=  "/S"+g ;
+			document.getElementById("DIV_SaveConfig").innerHTML = "";
+			//alert ( "G_strGetInfoPacket:"+strFullInfo );
+            //clearTimeout(G_nAutoSIMTimerID);
+            var packStr = new PacketString( strFullInfo );		
+            displayAutoSIMTable( packStr ); 
+			
+			if ( G_Reloading )
+			{
+				G_Reloading = 0;
+				document.getElementById("DIV_SaveConfig").innerHTML = "Configuration saved.";
+			}
+			return;
+
+				
+		}
+		case "CellAutoSIMReply":
+		{
+			var strAddr = packStr.getSection( "A" );
+			var g = packStr.getSection("g");
+			var i = packStr.getSection("i");
+			var r = packStr.getSection("r");
+			
+			if (r==1)
+			{
+				//save all cards info only for the first module. will be used when configuring per card/allsystem
+				G_arCardsInfo[ packStr.getSection("A")] = new Object();
+				G_arCardsInfo[ packStr.getSection("A")]["g"] = g.split(",").length;
+				G_arCardsInfo[ packStr.getSection("A")]["i"] = i.split(",").length;
+			}
+
+			if (G_bInAllCardsCheckLoop )
+			{
+				clearTimeout( G_nAllCardsInfoTimerID );
+				getAllCardsInfo();
+				return;
+			}
+
+			if ( G_strLastSelectedCard != strAddr )
+        	{
+				return;
+			}
+
+			G_strGetInfoPacket_g += g;
+			G_strGetInfoPacket_p += i;
+
+			if (G_nGetInfoCounter <= 4 )
+			{
+				G_strGetInfoPacket_g += "|";
+				G_strGetInfoPacket_p += "|";
+			}
+
+			if (!G_bInAllCardsCheckLoop )
+			{
+				getInfo( packStr.getSection("A") );
+			}
+
+			return;
+
+			
+		}
+		
+        default:
+        {
+            break;
+        }
+    }
+}
+
+/**********************************************************************************************/
+function resetOneSIMCounter()
+/**********************************************************************************************/
+{
+	G_nOneSIMCounter = 0;
+	G_strCardStatus = "MultiSIM";
+}
+
+
+/////////////////////////////////////////////////////////////
+//One SIM handling
+/////////////////////////////////////////////////////////////
+function displayOneSIMTable()
+{
+   
+	strHTML = "<table id='tableCounters'>";
+
+	strHTML += "<tr bgcolor='#f5f5b0'><td>Enable channel<br>limit</td>";
+	strHTML += "<td width='130'>Minutes until channel is blocked</td></tr>"
+
+    for (var i=0; i<G_arOneSIMResults.length; i++)
+    {
+		// /rA/gB/iC (where B is 1 for enabled and 0 for disabled, and C is the minutes amount until SIM is blocked)		
+		var packStr = G_arOneSIMResults[i];
+		var nEnableBlock = packStr.getSection("g");
+		
+		
+		strHTML += "<tr height='28' id='module_tr_"+i+"'>";
+		strHTML += "<td bgcolor='#e1e1e1' id='td_m'>";
+		strHTML += "<input type='checkbox' id='e" + i + "' onClick='enableOneSIMClicked(" + i + ");'";
+		
+		if ( nEnableBlock == "1" )
+		{
+			strHTML += "checked ";			
+		}
+		
+		strHTML += "/>";
+		strHTML += "Module <b>" + (i+1) + "</b>";
+		strHTML += "</td>";
+		
+		if ( nEnableBlock == "0" )
+		{
+			strHTML += "<td align='center' id='tdCounter" + i + "' bgcolor='#dedede'></td>";
+		}
+		else
+		{
+			strHTML += "<td align='center' id='tdCounter" + i + "' bgcolor='#dedede'>";
+			strHTML += "<INPUT TYPE='INPUT' onKeyUp='checkOneSIMUpdate();' size='8' id='ms" + i + "' value='" + packStr.getSection("i") + "' />";
+			strHTML += "</td>";	
+		}
+		
+		strHTML += "</tr>";
+	}
+    
+    strHTML += "</table><br>";
+
+	document.getElementById( "DIV_AutoSIM" ).innerHTML = strHTML;
+	document.getElementById("DIV_SaveConfig").innerHTML = "";
+	G_strLastConfig = getConfig();
+}
+/**********************************************************************************************/
+function enableOneSIMClicked( nModule )
+/**********************************************************************************************/
+{
+	var strID = "e" + nModule;
+	if ( document.getElementById( strID ).checked )
+	{
+		var strHTML = "<INPUT TYPE='INPUT' onKeyUp='checkOneSIMUpdate();' size='8' id='ms" + nModule + "' value='0' />";
+		document.getElementById( "tdCounter" + nModule ).innerHTML = strHTML;
+		
+	}
+	else
+	{
+		document.getElementById( "tdCounter" + nModule ).innerHTML = "";
+		
+	}
+	
+	checkOneSIMUpdate();
+}
+/**********************************************************************************************/
+function bool2StrNum( b )
+/**********************************************************************************************/
+{
+	if (b)
+		return "1";
+	else
+		return "0";
+}
+/**********************************************************************************************/
+function isCounterChanged( strOriginVal, objCounter )
+/**********************************************************************************************/
+{
+	
+	if ( objCounter != null)
+	{
+		if ( strOriginVal != objCounter.value )
+			return true;
+		else
+			return false;
+	}
+	else
+	{
+		return false;
+	}			
+}
+/**********************************************************************************************/
+function checkOneSIMUpdate()
+/**********************************************************************************************/
+{
+	var strUpdate = "";
+	for (var i=0; i<4; i++)
+	{
+		var packStr = G_arOneSIMResults[i];
+		var strEnabled = packStr.getSection("g");
+		var strBlockCountr = packStr.getSection("i");
+		var strCounterID = "ms" + i;
+		var strEnaID     = "e" + i;
+		var objEnable  = document.getElementById( strEnaID );		
+		var objCounter = document.getElementById( strCounterID );
+		
+		if ( strEnabled != bool2StrNum( objEnable.checked )  || isCounterChanged( strBlockCountr, objCounter ) )
+		{
+			strUpdate += (i+1) + "," + bool2StrNum( objEnable.checked ) + "," ;
+			strUpdate += (objCounter != null ) ? objCounter.value:"0";
+		}
+		if ( i < 3 )
+		{
+			strUpdate = strUpdate + "|";
+		}
+	}	
+	//if any updates show save btn
+	if ( strUpdate != "")
+	{
+		var strSave = utils_getButtonHTML( "saveOneSIMConfig('" + strUpdate + "')", "SaveSettings.jpg" );
+		document.getElementById("DIV_SaveConfig").innerHTML = strSave;		
+	}
+	else
+	{			
+		document.getElementById("DIV_SaveConfig").innerHTML = "";
+	}
+	
+}
+/**********************************************************************************************/
+function getOneSIMData()
+/**********************************************************************************************/
+{
+	if ( G_nOneSIMCounter < 4 )
+	{
+		var strCommand = "SendGenericPacket 3C:/A" + G_strCardAddress + "/r" + (++G_nOneSIMCounter) + "/Q";
+	    G_strID = "" + rand(999);	
+	    strCommand += "/I" + G_strID;		
+	    parent.frames[0].SendCommand( strCommand );	    
+	    document.getElementById("DIV_SaveConfig").innerHTML = "Getting information...";
+        //SendGenericPacket 69:/I789/A21/Q1
+        strCommand = "SendGenericPacket 69:/A" + G_strCardAddress +  "/Q" + G_nOneSIMCounter;
+	    G_strID = "" + rand(999);	
+	    strCommand += "/I" + G_strID;
+        alert(strCommand);
+	    parent.frames[0].SendCommand( strCommand );	    
+	    document.getElementById("DIV_SaveConfig").innerHTML = "Getting information...";
+	}
+	else
+	{
+		resetOneSIMCounter();
+		displayOneSIMTable();
+	}
+	
+}
+function saveOneSIMConfig( strConfigVals )
+{
+	strConfigVals = strConfigVals.replace("||","|");
+	strConfigVals = strConfigVals.replace("||","|");
+	if (strConfigVals.indexOf("|")== 0 )
+		strConfigVals = strConfigVals.substr(1);
+	if (strConfigVals.lastIndexOf("|")== strConfigVals.length-1 )
+		strConfigVals = strConfigVals.substr(0, strConfigVals.length-1);
+		
+	if ( strConfigVals != "" )
+	{	
+		G_arOneSIMSetTo = strConfigVals.split("|");
+		G_nOneSIMCounter = 0;
+		G_strCardStatus = "SaveOneSIM";
+		saveOneSIMData();
+	}
+	else
+	{
+		saveDone();	
+	}		
+}
+function saveDone()
+{
+	resetOneSIMCounter();
+	document.getElementById("DIV_SaveConfig").innerHTML = "Configuration saved.";
+	G_strCardStatus = "MultiSIM";	
+}
+function saveOneSIMData()
+{
+	if ( G_nOneSIMCounter < G_arOneSIMSetTo.length )
+	{
+		var strParams = G_arOneSIMSetTo[ G_nOneSIMCounter ].split(",");
+		var strCommand = "SendGenericPacket 3C:/A" + G_strCardAddress;
+	    strCommand += "/r" + strParams[0] + "/G" +  strParams[1] + "/i" + strParams[2];
+	    G_strID = "" + rand(999);	
+	    strCommand += "/I" + G_strID;	
+	    document.getElementById("DIV_SaveConfig").innerHTML = "Saving configuration...";
+		G_nOneSIMCounter++;
+		parent.frames[0].SendCommand( strCommand );		
+	}
+	else
+	{
+		saveDone();
+	}
+}
+
+/////////////////////////////////////////////////////////////
+//Multi SIM handling
+/////////////////////////////////////////////////////////////
+function displayAutoSIMTable( packStr )
+{
+	var nElementsInArow;
+	
+	var strParams = packStr.getSection( "p" );
+    var arParams = strParams.split( "|" );
+    var strModuleInfo = arParams[ 0 ];
+	var arSIMInfo = strModuleInfo.split( "," );
+   
+    var strInfo = packStr.getSection( "g" );
+    var arCardParam = strInfo.split( "|" );
+    var strCardInfo  = arCardParam[0];
+	var arCardInfo = strCardInfo.split( "," );	
+	
+	var strActiveSIM = packStr.getSection( "S" );
+	var arActiveSIM = strActiveSIM.split( "," );
+
+	if ( arSIMInfo[ 2 ] != null )
+	{
+		G_CallCountersSupported = 1;
+		if ( arSIMInfo[ 4 ] != null )
+		{
+			G_SimBlockingSupported = 1;
+			nElementsInArow = 10;
+		}
+		else
+		{
+			nElementsInArow = 8;
+		}
+	}
+	else
+	{
+		nElementsInArow = 6;
+	}
+	nElementsInArow = arSIMInfo.length + arCardInfo.length;	
+	G_nNumOfSIMCards = arCardInfo.length;
+
+	var strSIMname = (G_strLastSelectedCardType == "CC4.2") ? "RUIM" : "SIM";
+	
+	strHTML = "<table id='tableCounters'>";
+
+	strHTML += "<tr bgcolor='#f5f5b0'><td>Enable Auto<br>Switch</td>";
+	for (var i=0; i<arCardInfo.length;i++)
+	{
+		strHTML += "<td width='10'>" + strSIMname + "<br>&nbsp#"+(i+1)+"</td>";
+	}
+	// strHTML += "<td width='10'>" + strSIMname + "<br>&nbsp#1</td><td width='10'>" + strSIMname +"<br>&nbsp#2</td>";
+	// strHTML += "<td width='10'>" + strSIMname + "<br>&nbsp#3</td><td width='10'>" + strSIMname +"<br>&nbsp#4</td>";
+	strHTML += "<td width='120'>Minutes until<br>" + strSIMname + " is switched</td><td width='110'>Minutes until<br>" + strSIMname + " is blocked</td>"
+	if ( G_CallCountersSupported )
+	{
+		strHTML += "<td width='110'>Calls until<br>" + strSIMname + " is switched</td><td width='110'>Calls until<br>" + strSIMname + " is blocked</td>"
+	}
+	if ( G_SimBlockingSupported )
+	{
+		strHTML += "<td width='110'>Block " + strSIMname + " when<br>registration fails</td><td width='100'>Failures until<br> " + strSIMname + " blocked</td>"
+	}
+	strHTML += "</tr>"
+
+    for (var i=0; i<arCardParam.length; i++)
+    {
+		var nActiveSIM = parseInt( arActiveSIM[ i ] ) - 1;
+		strModuleInfo = arParams[ i ];
+		arSIMInfo = strModuleInfo.split( "," );
+		
+		strHTML += "<tr height='28' id='module_tr_"+i+"'>";
+		strHTML += "<td bgcolor='#e1e1e1' id='td_m'>";
+		strHTML += "<input type='checkbox' id='e" + i + "' onClick='enableClicked(" + i + ");'";
+		var nChecked = 0;
+		var allParams = arParams[i];
+		var arPParams = allParams.split(",");
+		//check only if any p param not zero
+		for (var j=0 ; j < arPParams.length ; j++)
+		{
+			if ( arPParams[ j ] != "0" )
+			{
+				strHTML += "checked ";
+				nChecked = 1;
+				break;
+			}
+		}
+		
+		strHTML += "/>";
+		strHTML += "Module <b>" + (i+1) + "</b>";
+		strHTML += "</td>";
+		
+		if ( nChecked == 0 )
+		{
+			for (var j=0 ; j < nElementsInArow ; j++)
+			{
+				strHTML += "<td align='center' id='td" + i + "_" + j + "' bgcolor='#dedede'></td>";
+			}
+			continue;
+		}
+		var cardParams = arCardParam[i];
+		var arCurrentCardParams = cardParams.split(",");
+		for (var j=0; j< G_nNumOfSIMCards; j++)
+		{			
+			var strID = i + "_" + j;
+			
+			strHTML += "<td align='center' id='td" + i + "_" + j + "' bgcolor=";
+			if ( j == nActiveSIM )
+			{
+				strHTML += "'#eff1ff'>";
+			}
+			else
+			{
+				strHTML += "'#dedede'>";
+			}
+			//alert(arCardParam[ j ]);
+			var strVal = arCurrentCardParams[ j ];
+			
+			strHTML += "<INPUT TYPE='CHECKBOX' onClick='checkUpdate();' id='p" + strID + "' ";
+			if ( strVal == "1" )
+			{
+				strHTML += "CHECKED "
+			}
+			strHTML += ">";
+		
+			/*
+			strHTML += "<img align=\"absmiddle\" name=\"reset" + j + "_" + i + "\" src=\"./Up-Reset.jpg\" ";
+			strHTML += " onmousedown=\"clickIt( this, 'Down-Reset.jpg', 1 );\" ";
+			strHTML += " onMouseOut=\" clickIt( this, 'Up-Reset.jpg', 0 );\" ";
+			strHTML += " onMouseUp=\"if (this.bPressed==1) {clickIt( this, 'Up-Reset.jpg', 0 ); resetCounter(" + strModSIM + "); }\" ";
+			strHTML += " onMouseOver=\"style.cursor='hand'\" /> ";
+			*/
+			strHTML += "</td>";
+		}
+		var arMParams = arParams[i].split( "," );
+		for (var j=0 ; j < arMParams.length ; j++)
+		{
+			strHTML += "<td align='center' id='td" + i + "_" + (j+parseInt(G_nNumOfSIMCards)) + "' bgcolor='#dedede'>";
+			if ( j != 4 )
+			{
+				strHTML += "<INPUT TYPE='INPUT' onKeyUp='checkUpdate();' size='8' id='";
+			}
+			else
+			{
+				strHTML += "<INPUT TYPE='CHECKBOX' onClick='checkUpdate();' id='";
+			}
+				
+			switch (j)
+			{
+				case 0:
+				{
+					strHTML += "mb" + i + "' value='" + arMParams[ 1 ] + "' /></td>";
+					break;
+				}
+		
+				case 1:
+				{
+					strHTML += "ms" + i + "' value='" + arMParams[ 0 ] + "' /></td>";
+					break;
+				}
+		
+				case 2:
+				{
+					strHTML += "ccb" + i + "' value='" + arMParams[ 3 ] + "' /></td>";
+					break;
+				}
+		
+				case 3:
+				{
+					strHTML += "ccs" + i + "' value='" + arMParams[ 2 ] + "' /></td>";
+					break;
+				}
+				
+				case 4:
+				{
+					strHTML += "nrb" + i + "' ";
+					if ( arMParams[ 4 ] == "1" ) strHTML += "CHECKED";
+					strHTML += " /></td>";
+					break;
+				}
+		
+				case 5:
+				{
+					strHTML += "fcb" + i + "' value='" + arMParams[ 5 ] + "' /></td>";
+					break;
+				}
+				
+				default:
+				{
+					strHTML += "' /></td>";
+					break;
+				}
+			}
+		}
+		strHTML += "</tr>";
+	}
+    
+    strHTML += "</table><br>";
+
+	/*
+	strHTML += "<img align=\"absmiddle\" name=\"refresh\" src=\"./Up-Refresh.jpg\" ";
+	strHTML += " onmousedown=\"clickIt( this, 'Down-Refresh.jpg', 1 );\" ";
+	strHTML += " onMouseOut=\" clickIt( this, 'Up-Refresh.jpg', 0 );\" ";
+	strHTML += " onMouseUp=\"if (this.bPressed==1) {clickIt( this, 'Up-Refresh.jpg', 0 ); doRefresh(); }\" ";
+	strHTML += " onMouseOver=\"style.cursor='hand'\" /> ";
+	*/
+	
+	//document.getElementById( "DIV_AutoSIM" ).innerHTML = strHTML;
+	showTable( strHTML, 0 );
+	G_strLastConfig = getConfig();
+}
+
+rnd.today=new Date();
+rnd.seed=rnd.today.getTime();
+
+function rnd()
+{
+        rnd.seed = (rnd.seed*9301+49297) % 233280;
+        return rnd.seed/(233280.0);
+};
+
+function rand(number)
+{
+        return Math.ceil(rnd()*number);
+};
+function enableClicked( nModule )
+{
+	var strID = "e" + nModule;
+	if ( document.getElementById( strID ).checked )
+	{	
+		var strHTML = "<INPUT TYPE='INPUT' onKeyUp='checkUpdate();' size='8' id='mb" + nModule + "' value='0' />";
+		document.getElementById( "td" + nModule + "_" + (parseInt(G_nNumOfSIMCards+0)) ).innerHTML = strHTML;
+		strHTML = "<INPUT TYPE='INPUT' onKeyUp='checkUpdate();' size='8' id='ms" + nModule + "' value='0' />";
+		document.getElementById( "td" + nModule + "_" +(parseInt(G_nNumOfSIMCards+1)) ).innerHTML = strHTML;
+		if ( G_CallCountersSupported )
+		{
+			strHTML = "<INPUT TYPE='INPUT' onKeyUp='checkUpdate();' size='8' id='ccb" + nModule + "' value='0' />";
+			document.getElementById( "td" + nModule +"_" +(G_nNumOfSIMCards+2) ).innerHTML = strHTML;
+			strHTML = "<INPUT TYPE='INPUT' onKeyUp='checkUpdate();' size='8' id='ccs" + nModule + "' value='0' />";
+			document.getElementById( "td" + nModule + "_" +(parseInt(G_nNumOfSIMCards+3)) ).innerHTML = strHTML;
+		}		
+		if ( G_SimBlockingSupported )
+		{
+			strHTML = "<INPUT TYPE='CHECKBOX' onClick='checkUpdate();' id='nrb" + nModule + "' />";
+			document.getElementById( "td" + nModule + "_" +(parseInt(G_nNumOfSIMCards+4)) ).innerHTML = strHTML;
+			strHTML = "<INPUT TYPE='INPUT' onKeyUp='checkUpdate();' size='8' id='fcb" + nModule + "' value='0' />";
+			document.getElementById( "td" + nModule + "_" +(parseInt(G_nNumOfSIMCards+5)) ).innerHTML = strHTML;
+		}		
+		for (var i=0; i<G_nNumOfSIMCards; i++)
+		{
+			strHTML = "<INPUT TYPE='CHECKBOX' onClick='checkUpdate();' id='p" + nModule + "_" + i + "' >";
+			document.getElementById( "td" + nModule + "_" + i ).innerHTML = strHTML;
+		}
+	}
+	else
+	{		
+		for (var i=0; i<G_nNumOfSIMCards; i++)
+		{
+			document.getElementById( "td" + nModule + "_" + i ).innerHTML = "";
+		}
+		/*document.getElementById( "td" + nModule + "_1" ).innerHTML = "";
+		document.getElementById( "td" + nModule + "_2" ).innerHTML = "";
+		document.getElementById( "td" + nModule + "_3" ).innerHTML = "";
+		document.getElementById( "td" + nModule + "_4" ).innerHTML = "";
+		document.getElementById( "td" + nModule + "_5" ).innerHTML = "";*/
+		document.getElementById( "td" + nModule + "_"  + (parseInt(G_nNumOfSIMCards)+0)).innerHTML = "";
+		document.getElementById( "td" + nModule + "_"  + (parseInt(G_nNumOfSIMCards)+1)).innerHTML = "";
+		if ( G_CallCountersSupported )
+		{
+			document.getElementById( "td" + nModule + "_"  + (parseInt(G_nNumOfSIMCards)+2)).innerHTML = "";
+			document.getElementById( "td" + nModule + "_"  + (parseInt(G_nNumOfSIMCards)+3)).innerHTML = "";
+		}
+		if ( G_SimBlockingSupported )
+		{
+			document.getElementById( "td" + nModule + "_"  + (parseInt(G_nNumOfSIMCards)+4)).innerHTML = "";
+			document.getElementById( "td" + nModule + "_"  + (parseInt(G_nNumOfSIMCards)+5)).innerHTML = "";
+		}
+	}
+	checkUpdate();
+}
+
+function checkUpdate()
+{
+	var strCurrConfig  = getConfig();
+	if ( strCurrConfig != G_strLastConfig )
+	{
+		var strUpdate = "";
+		var arPrev = G_strLastConfig.split( "|" );
+		var arCurr = strCurrConfig.split( "|" );
+		for (var i=0; i<G_nNumOfSIMCards; i++)
+		{
+			if ( arPrev[ i ] != arCurr[ i ] )
+			{
+				strUpdate += arCurr[ i ];
+			}
+			if ( i != 3 )
+			{
+				strUpdate += "|";
+			}
+		}				
+		var strSave = utils_getButtonHTML( "saveConfig('" + strUpdate + "')", "SaveSettings.jpg" );
+		document.getElementById("DIV_SaveConfig").innerHTML = strSave;
+	}
+	else
+	{
+		document.getElementById("DIV_SaveConfig").innerHTML = "";
+	}
+}
+
+function saveConfig( strConfigVals )
+{	
+	var ModulesCfgString = strConfigVals.split( "|" );
+
+	for (var i=1 ; i<=4 ; i++)
+	{
+		G_ModulesCfgParams[ i ] = "";
+		if ( ModulesCfgString[ i-1 ] != "" )
+		{
+			var arBothElements = ModulesCfgString[ i-1 ].split( "*" );
+			var ModuleCfgElements = arBothElements[0];		
+			ModuleCfgElements = ModuleCfgElements.split(",");
+			G_ModulesCfgParams[ i ] += "/G";
+			for (j=0 ; j<G_nNumOfSIMCards ; j++)
+			{
+				G_ModulesCfgParams[ i ] += ModuleCfgElements[ j ];
+				if (j != G_nNumOfSIMCards-1)
+				{
+					G_ModulesCfgParams[ i ] += ",";
+				}
+			}
+			
+			G_ModulesCfgParams[ i ] += "/i";
+			var iModuleCfgElements = arBothElements[1];
+			iModuleCfgElements = iModuleCfgElements.split(",");
+			for (j=0; j<iModuleCfgElements.length ; j++)
+			{
+				G_ModulesCfgParams[ i ] += iModuleCfgElements[ j ];
+				if ( j != (iModuleCfgElements.length - 1) )
+				{
+					G_ModulesCfgParams[ i ] += ",";
+				}
+			}
+			
+		}
+	}
+
+	G_CurrentUpdatedModule = 1;
+	G_CurrentUpdatedCard = 0;
+	var loop_modules = (G_nTableMode == 1) ? 4:1;
+	while ( G_CurrentUpdatedModule <= loop_modules )
+	{
+		if ( G_ModulesCfgParams[ G_CurrentUpdatedModule ] != "" )
+		{
+			G_bInSavingProcess = true;
+			clearTimeout( G_nTimerID );
+			G_nTimerID = setTimeout(setSaveAckTimer,15000);	
+			var addr = ( G_nTableMode != 3 )?  G_strLastSelectedCard : G_arAddresses[G_CurrentUpdatedCard];
+			SendModuleConfig ( addr , G_CurrentUpdatedModule, G_ModulesCfgParams[ G_CurrentUpdatedModule ]);
+			document.getElementById("DIV_SaveConfig").innerHTML = "Saving configuration...";
+			break;
+		}
+		else G_CurrentUpdatedModule ++;
+	}
+}
+
+function SendModuleConfig( card_addr, module, g_param )
+{
+	document.getElementById("DIV_SaveConfig").innerHTML += ".";
+    var strCommand = "SendGenericPacket 3b:/A" +card_addr;// G_strLastSelectedCard;
+    strCommand += "/I" + (module + 992) + "/r" + module + g_param;//G_ModulesCfgParams[ nModule ];
+	parent.frames[0].SendCommand( strCommand );
+}
+
+function getConfig()
+{
+	var strCurrent = "";
+	for (var i=0; i<4; i++)
+	{
+		for (var j=0; j<G_nNumOfSIMCards; j++)
+		{
+			var strID = "p" + i + "_" + j;
+			var obj = document.getElementById( strID );
+			if ( obj == null )
+			{
+				strCurrent += "0";
+			}
+			else
+			if ( obj.checked )
+			{
+				strCurrent += "1";
+			}
+			else
+			{
+				strCurrent += "0";
+			}
+			
+			strCurrent += ",";
+		}		
+		strCurrent = strCurrent.substring(0, strCurrent.length - 1);		
+		strCurrent += "*";
+		var strID = "ms" + i;
+		var obj = document.getElementById( strID );
+		if ( obj == null )
+		{
+			strCurrent += "0,";
+		}
+		else
+		{
+			strCurrent += obj.value + ",";
+		}
+
+		var strID = "mb" + i;
+		var obj = document.getElementById( strID );
+		if ( obj == null )
+		{
+			strCurrent += "0";
+		}
+		else
+		{
+			strCurrent += obj.value;
+		}
+
+		if ( G_CallCountersSupported )
+		{
+			strCurrent += ",";
+			var strID = "ccs" + i;
+			var obj = document.getElementById( strID );
+			if ( obj == null )
+			{
+				strCurrent += "0,";
+			}
+			else
+			{
+				strCurrent += obj.value + ",";
+			}
+
+			var strID = "ccb" + i;
+			var obj = document.getElementById( strID );
+			if ( obj == null )
+			{
+				strCurrent += "0";
+			}
+			else
+			{
+				strCurrent += obj.value;
+			}
+		}
+
+		if ( G_SimBlockingSupported )
+		{
+			strCurrent += ",";
+			var strID = "nrb" + i;
+			var obj = document.getElementById( strID );
+			if ( obj == null )
+			{
+				strCurrent += "0,";
+			}
+			else if ( obj.checked )
+			{
+				strCurrent += "1,";
+			}
+			else
+			{
+				strCurrent += "0,";
+			}
+
+			var strID = "fcb" + i;
+			var obj = document.getElementById( strID );
+			if ( obj == null )
+			{
+				strCurrent += "0";
+			}
+			else
+			{
+				strCurrent += obj.value;
+			}
+		}
+
+		if ( i < 3 )
+		{
+			strCurrent += "|";
+		}
+	}	
+	//document.getElementById( "DIV_SaveConfig" ).innerHTML = strCurrent;
+	return strCurrent;
+}
+
+function setSaveAckTimer()
+{
+	G_bInSavingProcess = false; 
+	document.getElementById("DIV_SaveConfig").innerHTML = "Error saving (Module#" + G_CurrentUpdatedModule + " Card#" + (G_CurrentUpdatedCard+1) + "), please try again or contact support.";
+}
+
+function getActiveSIM( strAddress )
+{
+	var strCommand = "SetMultiSIM /A";
+	strCommand += strAddress;
+	G_strID = "" + rand(999);
+	//alert( G_strID );
+    strCommand += "/I" + G_strID;
+    strCommand += "/Q";
+    parent.frames[0].SendCommand( strCommand );    
+}
+
+function getInfo( strAddress )
+{	
+	//user selected another card before finishing loading previous selected one.
+   /*	if ( G_strLastSelectedCard != strAddress )
+       		return;*/
+    strAddress = G_strLastSelectedCard;
+
+	if ( G_nGetInfoCounter == 1 )
+	{
+		resetParamsGlobals();
+	}
+	if ( G_nGetInfoCounter > 4)
+	{
+		getActiveSIM( strAddress );
+	 	G_nGetInfoCounter = 1;	 	
+		return;
+	}
+    var strCommand = "SendGenericPacket 3b:/A" + strAddress + "/r" + (G_nGetInfoCounter++) + "/Q";    
+	G_strID = "" + rand(999);
+    strCommand += "/I" + G_strID;  
+    parent.frames[0].SendCommand( strCommand );
+    document.getElementById("DIV_SaveConfig").innerHTML = document.getElementById("DIV_SaveConfig").innerHTML + "..";
+    //G_nAutoSIMTimerID = setTimeout("getInfo(" + strAddress + ")",4000);
+}
+function showTable( strTable, nChecked )
+{
+	if (G_bMixedSystem)
+	{
+		 document.getElementById("DIV_AutoSIM").innerHTML = strTable;
+	}
+	else
+	{
+		var checked = new Array;
+		for (var i=0; i<3; i++)
+		{
+			if ( nChecked == i )
+			{
+				checked[ i ] = "checked";
+			}
+			else
+			{
+				checked[ i ] = "";
+			}
+		}
+		
+		strHTML = "<table width='400'>";
+		strHTML += "<tr bgcolor='#eeeeee'>"
+		strHTML += "<td><input type='radio' onClick='onTableMode(1)' name='SetMethod' " + checked[0] + ">Module Settings</td>"
+		strHTML += "<td><input type='radio' onClick='onTableMode(2)' name='SetMethod' " + checked[1] + ">Entire Card</td>"
+		strHTML += "<td><input type='radio' onClick='onTableMode(3)' name='SetMethod' " + checked[2] + ">Entire System</td>"
+		strHTML += "</tr></table><br>"
+		strHTML += strTable;
+		document.getElementById("DIV_AutoSIM").innerHTML = strHTML;
+	}	
+    
+}
+function onTableMode(mode)
+{
+	//new table mode selected., set global (for saving event) and show table.
+	G_nTableMode = mode;
+	document.getElementById("DIV_SaveConfig").innerHTML = "";
+	if (mode == 1 )
+	{
+		//get params again and disppaly modules table		
+		init();
+		display_all_tr(true);
+	}
+	else
+	{
+		//showEntireCardSystemTable()
+		display_all_tr(false);
+	}
+}
+function display_all_tr(display)
+{
+	//show/hide table rows
+	for (var i=1; i<4;i++)
+	{
+		var row = document.getElementById("module_tr_"+i);
+		row.style.display = (display) ? '':'none';
+	}
+
+	//change Module 1 td text
+	var text = (display) ? "<input type='checkbox'></input>Module <b>1</b>" : "<INPUT onclick=enableClicked(0); id=e0 type=checkbox value=''><b>All Modules<b>";
+	document.getElementById("td_m").innerHTML = text;
+	
+	if (!display)
+	{
+		//remove highlighted active sims and rest all td (sim and params)
+		var numOfTds = G_nNumOfSIMCards + G_arCardsInfo[G_arAddresses[0]].i;
+		for (i=0; i<numOfTds; i++)
+		{
+			var td = document.getElementById("td0_"+i);
+			td.bgColor="#dedede";
+			td.innerHTML ="";
+		}
+	}
+}
+function clickIt( obj, strFile, bPressed )
+{
+	//alert( obj.name );
+    obj.bPressed = bPressed;
+	var str = 'document.all.' + obj.name + '.src = G_arBtnArray["' + strFile + '"].src';
+    eval( str );
+}
+
+</SCRIPT>
+
+<BODY onLoad="init()" bgcolor="white" onselectstart="return false;" ondragstart="return false;">
+<font size=4 face="Arial">Automatic SIM Management</font>
+<hr>
+
+<font face=Arial size=2>
+<div id="selectcard"></div>
+
+<div id="update_settings"></div>
+<br>
+
+<div id="DIV_AutoSIM">
+</div>
+
+<div id="DIV_SaveConfig">
+</div>
+
+</font>
+
+</BODY>
+</HTML>

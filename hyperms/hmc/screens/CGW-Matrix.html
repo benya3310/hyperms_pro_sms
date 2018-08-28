@@ -1,0 +1,177 @@
+<HTML>
+<HEAD><TITLE>Cellular Gateways - Configuration</TITLE></HEAD>
+<STYLE type=text/css>TABLE {
+	BORDER-RIGHT: #000000 1px solid; BORDER-TOP: #000000 1px solid; BORDER-LEFT: #000000 1px solid; BORDER-BOTTOM: #000000 1px solid; border-spacing: 0px; cell-spacing: 0px
+}
+TD {
+	PADDING-RIGHT: 0.5em; PADDING-LEFT: 0.5em; FONT-SIZE: 10pt; PADDING-BOTTOM: 2px; PADDING-TOP: 2px; FONT-FAMILY: Arial, Helvetica, sans-serif; WHITE-SPACE: nowrap
+}
+</STYLE>
+<script language=JavaScript src="../utils/TableRender.js"></script> 
+<SCRIPT language=javascript src="../utils/utilfuncs.js"></SCRIPT>
+<SCRIPT language=javascript src="../utils/alloc_logic.js"></SCRIPT>
+<SCRIPT language=javascript src="../utils/media_allocs_UI.js"></SCRIPT>
+<SCRIPT>
+// Received command from applet
+function OnData( strMessage )
+{
+    var strCommand = new String( strMessage );
+    var strParam = strCommand.split( " " );
+    var strSection;
+    
+    var packStr = new PacketString( strParam[1] );
+	
+    switch ( strParam[0] )
+    {
+        case "GWConfigInfo":
+        {			
+			var objSelect = G_allocUI.getSelectCardHTML( packStr, "CG4.0,CC4.0,CT4.1,CU4.1,CC4.2", "Select cellular card" );
+            var strHTML = objSelect.m_strHTML;
+			var strSelCard = objSelect.m_strSelCard;
+			var strSelCardType = objSelect.m_strSelCardType;
+            document.getElementById("selectcard").innerHTML = strHTML;
+            if ( strSelCard != null )
+            {
+                G_allocUI.onSelectCard( strSelCard, strSelCardType );
+            }
+            break;
+        }
+        
+        case "Ack":
+        {
+            G_allocUI.processAck( packStr );
+            break;
+        }
+        
+        case "GWError":
+        {
+            G_allocUI.processErr( packStr );
+            alert( "Got error message:" + strMessage );
+            break;
+        }
+
+        default:
+        {
+            // Send this to TCPServer log file ? internal log file ?
+            //alert( "Got unknown message:" + strMessage );
+            break;
+        }
+    }
+}
+
+var G_nCellCardMatrixTimerID;
+
+function getInfo( strAddress )
+{
+    clearTimeout(G_nCellCardMatrixTimerID);
+    //parent.frames[0].SendCommand( "CellSetBusLinks /I123/A" + strAddress + ... );
+    G_nCellCardMatrixTimerID = setTimeout("getInfo('" + strAddress + "')",4000);
+}
+
+
+// Send command to applet
+function Send( strMsg )
+{
+
+    parent.frames[0].SendCommand( strMsg );
+}
+
+function init()
+{
+    getGWConfig();
+}
+
+function getGWConfig()
+{
+    parent.frames[0].SendCommand( "GetGWConfig" );
+}
+
+function createTableElements( strCardAddress )
+{
+    ///////////////////////////////////////////////////////////
+    // Create the header structure of the table
+    
+    var oHeader = new Array();
+    
+    var oHeaderCell;
+
+    oHeaderCell = new Object();
+    oHeaderCell.m_strName = "Channel";
+    oHeaderCell.m_nWidth  = 55;
+    oHeader.push( oHeaderCell );
+
+    /*
+    oHeaderCell = new Object();
+    oHeaderCell.m_strName = "MSN";
+    oHeaderCell.m_nWidth  = 50;
+    oHeader.push( oHeaderCell );
+    
+    oHeaderCell = new Object();
+    oHeaderCell.m_strName = "CLI";
+    oHeaderCell.m_nWidth  = 40;
+    oHeader.push( oHeaderCell );
+
+    oHeaderCell = new Object();
+    oHeaderCell.m_strName = "Direction";
+    oHeaderCell.m_nWidth  = 80;
+    oHeader.push( oHeaderCell );
+    */
+    
+    oHeaderCell = new Object();
+    oHeaderCell.m_strName = "Target Link <div id='DIV_Action'></div>";
+    oHeaderCell.m_nWidth  = 210;
+    oHeader.push( oHeaderCell );
+
+    var oTable = new Object();
+    oTable.oHeader = oHeader;
+
+    oTable.m_oRows = new Array();
+
+    var arMSNs = new Array( "-", "-", "-", "-" );
+    var arCLIEnabled = new Array( "-", "-", "-", "-" );
+    var arDirections = new Array( "-", "-", "-", "-" );
+    
+    // Get the array of texts for the channel allocation column
+    var arTextualAllocated = G_allocUI.getTextualAllocations( strCardAddress );
+    
+    // Create the set of columns that are needed for this table.
+    
+    //arCol = new Array( arMSNs, arCLIEnabled, arDirections, arTextualAllocated );
+    arCol = new Array( arTextualAllocated );
+    
+    // Define the set of clickable columns (cursor changes to a hand).
+    
+    //arColClickable = new Array( 0, 0, 0, 0, 1 );
+    arColClickable = new Array( 1 );
+
+    // Build the table based on the table header and the above set of columns
+    return G_allocUI.buildTableElements( oTable, arCol, arColClickable );
+}
+
+function onCustomCellClicked( strTable, nRow, nCol )
+{
+    //alert( nRow + ":" + nCol );
+}
+</SCRIPT>
+
+<BODY onLoad="init()" bgcolor="white" onselectstart="return false;" ondragstart="return false;">
+<font size=4 face="Arial">Cellular Cards Media Matrix</font>
+<hr>
+
+<font face=Arial size=2>
+<div id="selectcard"></div>
+
+<div id="update_settings"></div>
+<br>
+
+
+<div id="DIV_MatrixTable">
+</div>
+
+<div id="DIV_SaveConfig">
+</div>
+
+</font>
+
+</BODY>
+</HTML>

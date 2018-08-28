@@ -1,0 +1,290 @@
+<HTML>
+<link type="text/css" href="../default.css" rel="stylesheet">
+<SCRIPT language=javascript src="../utils/alloc_logic.js"></SCRIPT>
+<SCRIPT language=javascript src="../utils/level_bar.js"></SCRIPT>
+<SCRIPT language=javascript src="../utils/utilfuncs.js"></SCRIPT>
+<SCRIPT language=javascript src="../utils/sorttable.js"></SCRIPT>
+<SCRIPT>
+var G_nModuleToSave = 0;
+var G_arAddresses	= new Array();
+var G_arTypes		= new Array();
+var G_bSaveMode = false;
+function OnData( strMessage )
+{
+    var strCommand = new String( strMessage );
+    var strParam = strCommand.split( " " );
+    var strSection;
+    
+    var nCommandStart = strParam[0].length + 1;
+    var strCommandParam = strMessage.substr( nCommandStart );
+    var packStr = new PacketString( strCommandParam );
+    
+    switch ( strParam[0] )
+    {            
+        case "Ack":
+        {
+        //alert( G_nModuleToSave );
+             if ( G_nModuleToSave == G_arAddresses.length ){
+                document.getElementById("DIV_SaveConfig").innerHTML = "Configuration saved.";
+                G_nModuleToSave = 0;}
+              else{
+               save();
+               document.getElementById("DIV_SaveConfig").innerHTML += "...";}
+            break;
+        }
+        
+        case "GWError":
+        {
+            document.getElementById("DIV_SaveConfig").innerHTML = "Error saving configuration.";
+            break;
+        }
+
+        case "CellSMSTriggersReply":
+        {
+            //alert(strMessage);
+            updateSMSTable( packStr );
+            //document.getElementById( "ID_SMSTable" ).innerHTML += "CellMSNValues Ack: "+strMessage+"<br>";
+            //clearTimeout(G_nMSNValuesTimerID);
+            //alert( G_bSaveMode );
+            if ( G_bSaveMode )
+                saveSMS();
+            break; 
+            
+        }
+        
+
+        case "GWConfigInfo":
+        {
+          
+			//first check if there is any CG card on GW:
+            var objSelect = G_configInfo.getSelectCardHTML( packStr, "CG4.0,CC4.0,CT4.1,CU4.1,CC4.2", "Select cellular card", "onSelectCard" );            
+			var strSelCard = objSelect.m_strSelCard;			          
+            if ( strSelCard == null )
+            {				
+				document.getElementById( "ID_SMSTable" ).innerHTML = "<font face=Arial size=2>No cellular card was detected.";
+				return;
+            }
+			G_configInfo.processConfigInfo( packStr );			 
+			FillCardType( "CG4.0" );
+			FillCardType( "CC4.0" );
+			FillCardType( "CT4.1" );
+			FillCardType( "CU4.1" );
+			FillCardType( "CC4.2" );
+           sortCardsAddresses();
+			displaySMSTable();
+			getInfo();
+            break;
+        }
+        
+        default:
+        {
+            //alert( "Got unknown message:" + strMessage );
+            break;
+        }
+    }
+}
+function updateSMSTable( packStr )
+{
+
+    var strCardAddr		= packStr.getSection( "A" );    
+    var strInfo = packStr.getSection( "g" );
+    var strAutoMSNValues = packStr.getSection( "n" );			
+    var arParam = strInfo.split( "," );            
+    for (var i=0; i<arParam.length; i++)
+    {
+        var strID = "m_" + strCardAddr + "_" + i;
+        var strBtn = "<input type=\"checkbox\" class=\"PlanRow\" ";
+		 strBtn    += "value=\" "+ strCardAddr +"\" style=\"width='60px'\" id=\"txt"+strID + "\" ";
+        if ( arParam[i] == "2" )
+        {
+            strBtn += " checked >";	
+        }
+        else
+            strBtn += ">";	
+        //alert(  strID);
+        document.getElementById( strID ).innerHTML = strBtn ;
+        
+    }
+    var strID = "auto" + strCardAddr;
+    document.getElementById( strID ).value = strAutoMSNValues ;
+}
+function displaySMSTable()
+{
+    if ( G_arAddresses.length == 0 ) 
+    {
+       document.getElementById( "ID_SMSTable" ).innerHTML = "<font face=Arial size=2>No card detected in this gateway"; 
+       return;
+    }
+    var strHTML = getSettingPannel();
+    strHTML    += "<table CLASS='TableLight' id='unique_id'><tr class='TableHeader'>";
+    strHTML    += "<td width='20px'>Card</td><td>Module 1</td><td>Module 2</td><td>Module 3</td><td>Module 4</td></tr>";
+    
+    for (var i=0; i<G_arAddresses.length; i++)
+    {
+        var strAddress = G_arAddresses[ i ];
+        strHTML += "<tr>"; 
+        strHTML += "<td class='TableHeader'>" + (parseInt( strAddress, 16 ) - 0x20);
+        strHTML += "<input type=\"hidden\" id=\"auto"+G_arAddresses[ i ]+"\">";        
+        strHTML += "</td>"; 
+                         
+        for (var j=0; j<4; j++ )
+        {
+            strHTML += "<td   width='20px' id='m_" + strAddress + "_" + j + "'>"; 
+            strHTML += "</td>"; 
+            
+        }
+        strHTML += "</tr>"; 
+	}
+	
+	strHTML += "</table>";
+	document.getElementById( "ID_SMSTable" ).innerHTML = strHTML;
+	sortables_init();
+}
+function getSettingPannel()
+{
+    var strHTML = "<table CLASS='TableLight'><tr><td></td></tr>";
+    //btn set
+    var strBtn  = "<input type=\"button\" class=\"Button\" onclick=\"setSMSValues(true)\" ";
+    strBtn += "value=\"set all\" style=\"width='50px'\">&nbsp&nbsp";    
+    strHTML += "<td>"+strBtn;//+"</td>";
+    //clear
+    strBtn  = "|&nbsp&nbsp<input type=\"button\" class=\"Button\" onclick=\"setSMSValues(false)\" ";
+    strBtn += "value=\"clear all\" style=\"width='50px'\">&nbsp&nbsp";    
+    strHTML += strBtn;//+"</td>";
+    //btn save
+    strBtn  = "|&nbsp&nbsp<input type=\"button\" class=\"Button\" onclick=\"save()\" ";
+    strBtn += "value=\"save\" style=\"width='30px'\">";
+    strHTML += strBtn+"</td>";
+    strHTML += "</tr></table><HR><br><div id=\"DIV_SaveConfig\"></div><br>";    
+return strHTML;
+}
+function setSMSValues(bChecked)
+{
+    
+    //alert ("from:" + nFrom + " to:"+ nAmount + " step:" + nStep );
+    //run over table and update msn text box values
+    
+    
+    for (var i=0; i<G_arAddresses.length; i++)
+    {
+        for (var j=0; j<4; j++)
+        {
+           var strID = "txtm_" + G_arAddresses[ i ] + "_" + j;
+           document.getElementById( strID ).checked =  bChecked;
+           
+            
+        }            
+    }    
+}
+function save()
+{
+    G_bSaveMode = true;
+    G_nModuleToSave = 0;
+    document.getElementById("DIV_SaveConfig").innerHTML = "Saving...";
+    saveSMS();
+}
+function saveSMS()
+{
+    
+    document.getElementById("DIV_SaveConfig").innerHTML += "...";    
+    
+    //read all cards
+    if ( G_nModuleToSave <  G_arAddresses.length)//for (var i=0; i<G_arAddresses.length ; i++)
+    {
+        var strID = "auto" + G_arAddresses[ G_nModuleToSave ];
+        var strAutoMSN =  document.getElementById( strID ).value;
+        var strSMSValues = "";
+        for (var j=0; j<4 ; j++)
+        {
+           var strID = "txtm_" + G_arAddresses[ G_nModuleToSave ] + "_" + j;
+           strSMSValues += (document.getElementById( strID ).checked==true) ? "2":"0" ;
+           if (j<3) strSMSValues += ",";
+            
+        }
+        var strCommand = "CellSMSTriggers    /A";
+        strCommand += G_arAddresses[ G_nModuleToSave ];
+        strCommand += "/I5"+G_nModuleToSave+"/G" + strSMSValues.replace(/\s/g,"");
+        strCommand +="/S*NoSMSFilter*";
+        G_nModuleToSave++;
+        //document.getElementById( "ID_SMSTable" ).innerHTML += strCommand+"<br>";//"G_arAddresses:" + G_arAddresses[ i ] +  " strAutoMSN:" + strAutoMSN + " strMSNValues:" + strMSNValues.replace(/\s/g,"") +"<br>";
+        //alert( strCommand);
+        parent.frames[0].SendCommand(strCommand);
+    }
+    else
+    {    
+        G_bSaveMode = false;
+        document.getElementById("DIV_SaveConfig").innerHTML = "Saved!"; 
+    }
+}
+
+function FillCardType( strType )
+{
+	var arTypeAddr = G_configInfo.getCardTypeAddresses( strType );
+   // alert( "arTypeAddr:" + arTypeAddr);        
+        
+	if ( typeof( arTypeAddr ) != 'undefined' )
+	{
+		for (var i=0; i<arTypeAddr.length; i++)
+		{
+			G_arTypes.push( strType );
+		}
+		G_arAddresses = G_arAddresses.concat( arTypeAddr );
+	}
+}
+function sortCardsAddresses()
+{
+ var nAddress = new Array();
+ for ( var i=0; i< G_arAddresses.length; i++ )
+ {
+    nAddress[i] = parseInt(G_arAddresses[i]);
+ } 
+ nAddress.sort();
+ G_arAddresses = nAddress;
+}
+
+function init()
+{
+
+    getGWConfig();
+}
+
+
+function getGWConfig()
+{
+    parent.frames[0].SendCommand( "GetGWConfig" );
+}
+
+var G_nCG4MonitorTimerID;
+var G_nCurrent = 0;
+
+function getInfo()
+{
+	
+	if ( G_nCurrent == G_arAddresses.length)
+    {
+        clearTimeout( G_nCG4MonitorTimerID );
+        return;
+    }    
+     var strCommand = "CellSMSTriggers /A";
+    strCommand += G_arAddresses[G_nCurrent];
+    strCommand += "/I" + G_arAddresses[G_nCurrent];
+	//alert("cmd:"+strCommand);
+    parent.frames[0].SendCommand( strCommand );
+    G_nCurrent++;
+    G_nCG4MonitorTimerID = setTimeout("getInfo()",500);
+}
+
+</SCRIPT>
+
+<BODY onLoad="init();" bgcolor="white" onselectstart="return false;">
+<font size=4 face="Arial">All Cellular Cards SMS Reception</font>
+<hr>
+
+<font size=1 face="Arial">
+<div id="ID_SMSTable"></div>
+
+</font>
+
+
+</BODY>
+</HTML>

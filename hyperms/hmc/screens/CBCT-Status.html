@@ -1,0 +1,547 @@
+<HTML>
+<link type="text/css" href="../default.css" rel="stylesheet">
+<STYLE type="text/css">
+.skin0 {
+position:absolute;
+text-align:left;
+width:200px;
+border:2px solid black;
+background-color:menu;
+font-family:Verdana;
+line-height:20px;
+cursor:default;
+visibility:hidden;
+}
+
+.skin1 {
+cursor:default;
+font:menutext;
+position:absolute;
+text-align:left;
+font-family: Arial, Helvetica, sans-serif;
+font-size: 10pt;
+width:120px;
+background-color:menu;
+border:1 solid buttonface;
+visibility:hidden;
+border:2 outset buttonhighlight;
+}
+
+.menuitems {
+padding-left:15px;
+padding-right:10px;
+}
+
+tr.disabled td {
+   color: gray; 
+}
+</STYLE>
+<SCRIPT language=javascript src="../utils/utilfuncs.js"></SCRIPT>
+<SCRIPT language=javascript src="../utils/alloc_logic.js"></SCRIPT>
+<SCRIPT>
+
+var G_strCBReply = "";
+var G_strCTReply = "";
+var G_nNumOfCB   = 0;
+var G_nNumOfCT   = 0;
+
+var G_nTotal = 72;  // UF: read this from initial data
+var G_nTotalCB = 0;
+var G_nTotalCT = 0;
+var G_oStatus              = new Array();
+var G_VoIPChannelStatusMap = new Array();
+var G_arMediaLinks         = new Array();
+var G_arAddresses          = new Array();
+var G_arTypes              = new Array();
+
+var menuskin = "skin1"; // skin0, or skin1
+var display_url = 0; // Show URLs in status bar?
+var g_nLastX = 0;
+var g_nLastY = 0;
+var g_nLastSelChannel = 0;
+var g_objSelRow = null;
+var g_strStatistics = "";
+
+function init()
+{
+    getGWConfig();
+}
+function doTriggersTable( strCBTriggers, strSMSTriggers)
+{
+	
+    var arCBTriggers = ( strCBTriggers.length > 0 ) ? strCBTriggers.split(",") : "";
+    var arSMSTriggers = (strSMSTriggers.length > 0 ) ? strSMSTriggers.split(",") : "";
+	
+	var strHTML = "<table class='headerScollable' border='0' cellspacing='0' ><thead><tr>";	
+	strHTML += "<td align='left' width='40'>No.</td>";
+	strHTML += "<td align='left' width='100'>Trigger Type</td>";
+	strHTML += "<td align='left' width='550'>Address</td>";
+	strHTML += "</tr></thead><tbody class='scrollContent'>";
+	
+	var count = 1;
+	for (var i=0; i<arCBTriggers.length; i++)
+	{
+		strHTML += "<tr>";// id='ctRow_" + i + "'>";
+		strHTML += "<td id='tID" + i + "'>"+ (count++) + "</td>"; // channel
+		strHTML += "<td id='tType'>Callback</td>"; // channel
+		strHTML += "<td id='tAdd'>"+ getAddressText( arCBTriggers[i] ) + "</td>";		
+		strHTML += "</tr>";
+	}
+	
+	
+	for (var i=0; i<arSMSTriggers.length; i++)
+	{
+		strHTML += "<tr>";// id='ctRow_" + i + "'>";
+		strHTML += "<td id='tID" + i + "'>"+ (count++) + "</td>"; // channel
+		strHTML += "<td id='tType'>SMS</td>"; // channel
+		strHTML += "<td id='tAdd'>"+ getAddressText( arSMSTriggers[i] ) + "</td>";		
+		strHTML += "</tr>";
+	}
+	strHTML += "</tbody></table>";	
+	document.getElementById("tableTriggers").innerHTML = strHTML;
+}
+function doStatusTable()
+{
+	//alert("doStatusTable()");
+	var strHTML = "<table class='headerScollable' border='0' cellspacing='0' ><thead><tr>";
+	strHTML += "<td align='left' width='50'>Type</td>";
+	strHTML += "<td align='left' width='60'>In Use</td>";
+	strHTML += "<td align='left' width='70'>Leg1</td>";
+	strHTML += "<td align='left' width='160'>Status</td>";
+	strHTML += "<td align='left' width='70'>Leg2</td>";
+	strHTML += "<td align='left' width='160'>Staus</td>";
+	strHTML += "<td align='left' width='90'>VPN Group</td>";
+	strHTML += "</tr></thead><tbody class='scrollContent'>";
+    //CB
+    for (var i=0; i<G_nTotalCB; i++)
+    {
+		//draw UI
+        strHTML += "<tr>";// id='cbRow_" + i + "'>";
+        strHTML += "<td id='cbType_" + i + "'>-</td>"; // channel
+        strHTML += "<td id='cbActive_" + i + "'>-</td>";
+        strHTML += "<td id='cbLeg1_" + i + "'>-</td>";
+        strHTML += "<td id='cbLeg1Status_" + i + "'>-</td>";
+        strHTML += "<td id='cbLeg2_" + i + "'>-</td>";
+        strHTML += "<td id='cbLeg2Status_" + i + "'>-</td>";
+		strHTML += "<td id='cbVPN_" + i + "'>-</td>";
+        strHTML += "</tr>";			
+    }
+	//CT
+	for (var i=0; i<G_nTotalCT; i++)
+    {
+        //draw UI
+		strHTML += "<tr>";// id='ctRow_" + i + "'>";
+        strHTML += "<td id='ctType_" + i + "'>-</td>"; // channel
+        strHTML += "<td id='ctActive_" + i + "'>-</td>";
+        strHTML += "<td id='ctLeg1_" + i + "'>-</td>";
+        strHTML += "<td id='ctLeg1Status_" + i + "'>-</td>";
+        strHTML += "<td id='ctLeg2_" + i + "'>-</td>";
+        strHTML += "<td id='ctLeg2Status_" + i + "'>-</td>";
+		strHTML += "<td id='ctVPN_" + i + "'>-</td>";
+        strHTML += "</tr>";
+	}
+	strHTML += "</tbody></table>";	
+	document.getElementById("id_DIVStatus").innerHTML = strHTML;
+	
+	 //CB
+    for (var i=0; i<G_nTotalCB; i++)
+    {
+		//objects array
+		//var rowID       = 'cbRow_' + i;
+        var strType 	= "cbType_" + i;
+        var strActive 	= "cbActive_" + i;
+        var strLeg1 	= "cbLeg1_" + i;
+        var strLeg1Stat	= "cbLeg1Status_" + i;
+        var strLeg2     = "cbLeg2_" + i;
+        var strLeg2Stat = "cbLeg2Status_" + i;
+		var strVPN      = "cbVPN_" + i;
+		
+        //G_oStatus[ rowID ]          = document.getElementById(rowID);
+        G_oStatus[ strType ]		= document.getElementById(strType);
+        G_oStatus[ strActive ]		= document.getElementById(strActive);
+        G_oStatus[ strLeg1 ]		= document.getElementById(strLeg1);
+        G_oStatus[ strLeg1Stat ]	= document.getElementById(strLeg1Stat);
+        G_oStatus[ strLeg2 ]		= document.getElementById(strLeg2);
+        G_oStatus[ strLeg2Stat ]	= document.getElementById(strLeg2Stat);
+		G_oStatus[ strVPN ]	        = document.getElementById(strVPN);
+	}
+	//CT
+	for (var i=0; i<G_nTotalCT; i++)
+    {
+        
+		//objects array
+		//var rowID       = 'ctRow_' + i;
+        var strType 	= "ctType_" + i;
+        var strActive 	= "ctActive_" + i;
+        var strLeg1 	= "ctLeg1_" + i;
+        var strLeg1Stat	= "ctLeg1Status_" + i;
+        var strLeg2     = "ctLeg2_" + i;
+        var strLeg2Stat = "ctLeg2Status_" + i;
+		var strVPN      = "ctVPN_" + i;
+		
+        //G_oStatus[ rowID ]          = document.getElementById(rowID);
+        G_oStatus[ strType ]		= document.getElementById(strType);
+        G_oStatus[ strActive ]		= document.getElementById(strActive);
+        G_oStatus[ strLeg1 ]		= document.getElementById(strLeg1);
+        G_oStatus[ strLeg1Stat ]	= document.getElementById(strLeg1Stat);
+        G_oStatus[ strLeg2 ]		= document.getElementById(strLeg2);
+        G_oStatus[ strLeg2Stat ]	= document.getElementById(strLeg2Stat);
+		G_oStatus[ strVPN ]	        = document.getElementById(strVPN);
+    }
+    
+}
+
+function processReplies()
+{
+	if  ( G_strCBReply == "" || G_strCTReply == "" )
+		return;
+	
+	//we have both CB and CT replies now
+	var strCBLeg1 = G_strCBReply.getSection( "G" );
+	//alert("strCBLeg1="+strCBLeg1);
+	var arCBLeg1 = strCBLeg1.split(",");	
+	var numOfCB = (strCBLeg1 == "") ? 0 : arCBLeg1.length;
+	
+	var strCTLeg1 = G_strCTReply.getSection( "G" );
+	var arCTLeg1 = strCTLeg1.split(",");
+	var numOfCT = (strCTLeg1 == "") ? 0 : arCTLeg1.length;
+	
+	if ( numOfCB!=G_nTotalCB || numOfCT != G_nTotalCT )
+	{
+		//first load, or num of resources changed from another HMC instance, redraw table
+		G_nTotalCB = numOfCB;
+		G_nTotalCT = numOfCT;
+		doStatusTable();
+	}
+	
+	
+	//parse msgs and build the status arrays
+	//CallbackStatusReply /Gleg1,leg1,leg1/gleg2,leg2,leg2/F0,0,0/f1,0,0/U0,1,0/Sleg1-bllalala,leg1-bllla,leg1-bllalala/sleg2-bllla...
+	
+	var arCBLeg1 		= G_strCBReply.getSection( "G" ).split(",");
+	var arCBLeg2 		= G_strCBReply.getSection( "g" ).split(",");
+	var arCBLeg1Faulty  = G_strCBReply.getSection( "F" ).split(",");
+	var arCBLeg2Faulty  = G_strCBReply.getSection( "f" ).split(",");
+	var arCBActive      = G_strCBReply.getSection( "U" ).split(",");
+	var arCBLeg1Stat    = G_strCBReply.getSection( "S" ).split(",");
+	var arCBLeg2Stat    = G_strCBReply.getSection( "s" ).split(",");
+	var arCBVPNGroup    = G_strCBReply.getSection( "V" ).split(",");
+	var arCBDDILeg1     = G_strCBReply.getSection( "L" ).split(",");
+	var arCBDDILeg2     = G_strCBReply.getSection( "l" ).split(",");
+
+
+	
+	//CB
+	for ( var i=0; i<G_nTotalCB; i++ )
+	{
+		var strType 	 = "cbType_" + i;
+		var strActive 	 = "cbActive_" + i;
+        var strLeg1 	 = "cbLeg1_" + i;
+        var strLeg2      = "cbLeg2_" + i;
+		var strLeg1Stat	 = "cbLeg1Status_" + i;
+        var strLeg2Stat  = "cbLeg2Status_" + i;
+		var strVPNGroup  = "cbVPN_" + i;
+		var strLeg1Color = ( arCBLeg1Faulty[ i ] == 1) ? "red" : "green";
+		var strLeg2Color = ( arCBLeg2Faulty[ i ] == 1) ? "red" : "green";
+		
+		var Leg1String = getAddressText( arCBLeg1[ i ] );
+		var Leg2String = getAddressText( arCBLeg2[ i ] );
+		
+		var Leg1Status = arCBLeg1Stat[ i ];
+		var Leg2Status = arCBLeg2Stat[ i ];
+		
+		
+		if ( Leg1Status == "Dial ack" )
+			Leg1Status = "Alerting";
+		if ( Leg2Status == "Dial ack" )
+			Leg2Status = "Alerting";
+		
+		if ( Leg1Status!="Idle" )
+			Leg1Status += " (" + arCBDDILeg1[ i ] + ")";
+		if ( Leg2Status!="Idle" )	
+			Leg2Status += " (" + arCBDDILeg2[ i ] + ")";
+        
+		G_oStatus[ strType ].innerHTML = "Callback";
+		G_oStatus[ strActive ].innerHTML   = (arCBActive[ i ] == 1) ? "Yes" : "No";
+		G_oStatus[ strLeg1 ].innerHTML     = Leg1String;
+		G_oStatus[ strLeg2 ].innerHTML 	   = Leg2String;
+		G_oStatus[ strLeg1Stat ].innerHTML = ( arCBLeg1Faulty[ i ] == 1) ? "<font color='red'>Faulty</font>" : Leg1Status;
+		G_oStatus[ strLeg2Stat ].innerHTML = ( arCBLeg2Faulty[ i ] == 1) ? "<font color='red'>Faulty</font>" : Leg2Status;
+		G_oStatus[ strVPNGroup ].innerHTML = arCBVPNGroup[ i ];
+		
+	}
+	
+	//CT
+	var arCTLeg1 		= G_strCTReply.getSection( "G" ).split(",");
+	var arCTLeg2 		= G_strCTReply.getSection( "g" ).split(",");
+	var arCTLeg1Faulty  = G_strCTReply.getSection( "F" ).split(",");
+	var arCTLeg2Faulty  = G_strCTReply.getSection( "f" ).split(",");
+	var arCTActive      = G_strCTReply.getSection( "U" ).split(",");
+	var arCTLeg1Stat    = G_strCTReply.getSection( "S" ).split(",");
+	var arCTLeg2Stat    = G_strCTReply.getSection( "s" ).split(",");
+	var arCTVPNGroup    = G_strCTReply.getSection( "V" ).split(",");
+	var strCTCBEnabled  = G_strCTReply.getSection( "E" );
+	var arCallType      = G_strCTReply.getSection( "T" ).split(",");
+	var arCTDDILeg1     = G_strCTReply.getSection( "L" ).split(",");
+	var arCTDDILeg2     = G_strCTReply.getSection( "l" ).split(",");
+	
+	
+	for ( var i=0; i<G_nTotalCT; i++ )
+	{
+		var strType 	 = "ctType_" + i;
+		var strActive 	 = "ctActive_" + i;
+        var strLeg1 	 = "ctLeg1_" + i;
+        var strLeg1Stat	 = "ctLeg1Status_" + i;
+        var strLeg2      = "ctLeg2_" + i;
+        var strLeg2Stat  = "ctLeg2Status_" + i;
+		var strVPNGroup  = "ctVPN_" + i;
+		var strLeg1Color = ( arCTLeg1Faulty[ i ] == 1) ? "red" : "green";
+		var strLeg2Color = ( arCTLeg2Faulty[ i ] == 1) ? "red" : "green";
+				
+		var Leg1String = getAddressText( arCTLeg1[ i ] );
+		var Leg2String = getAddressText( arCTLeg2[ i ] );
+		
+		var Leg1Status = arCTLeg1Stat[ i ];
+		var Leg2Status = arCTLeg2Stat[ i ];
+		
+		
+		if ( Leg1Status == "Dial ack" )
+			Leg1Status = "Alerting";
+		if ( Leg2Status == "Dial ack" )
+			Leg2Status = "Alerting";
+		if ( Leg1Status!="Idle" )
+			Leg1Status += " (" + arCTDDILeg1[ i ] + ")";
+		if ( Leg2Status!="Idle" )	
+			Leg2Status += " (" + arCTDDILeg2[ i ] + ")";
+		
+		if ( strCTCBEnabled == "Yes" )
+			G_oStatus[ strType ].innerHTML = "CB/CT";
+		else
+			G_oStatus[ strType ].innerHTML = "Callthrough";
+			
+	    //document.getElementById("debug").innerHTML = "CT L"+arCTDDILeg1;
+		G_oStatus[ strActive ].innerHTML   = (arCTActive[ i ] == 1) ? "Yes (" +arCallType[i] +")"  : "No";
+		G_oStatus[ strLeg1 ].innerHTML     = Leg1String;
+		G_oStatus[ strLeg2 ].innerHTML 	   = Leg2String;
+		G_oStatus[ strLeg1Stat ].innerHTML = ( arCTLeg1Faulty[ i ] == 1) ? "<font color='red'>Faulty</font>" : Leg1Status;
+		G_oStatus[ strLeg2Stat ].innerHTML = ( arCTLeg2Faulty[ i ] == 1) ? "<font color='red'>Faulty</font>" : Leg2Status;
+		G_oStatus[ strVPNGroup ].innerHTML = arCTVPNGroup[ i ];
+	}
+	
+}
+
+function OnData( strMessage )
+{
+    var arParam = strMessage.split( " " );
+    
+    var strCommand  = arParam[ 0 ];
+    var strParam    = strMessage.substring( strCommand.length );
+    
+    var packStr = new PacketString( strParam );
+    //alert ("strMessage:"+strMessage);
+    switch ( strCommand )
+    {
+        //CallbackStatusReply /Gleg1,leg1,leg1/gleg2,leg2,leg2/F0,0,0/f1,0,0/U0,1,0/Sleg1-bllalala,leg1-bllla,leg1-bllalala/sleg2-bllla...
+		case "CallbackStatusReply":
+		{
+			var strLeg1 = packStr.getSection( "G" );
+			var arLeg1 = strLeg1.split(",");
+			var numOfCB = arLeg1.length;
+			G_strCBReply = new PacketString( strParam );
+			processReplies();
+			break;
+			
+		}
+		case "CallthroughStatusReply":
+		{
+			var strLeg1 = packStr.getSection( "G" );
+			var arLeg1 = strLeg1.split(",");
+			var numOfCB = arLeg1.length;
+			G_strCTReply = new PacketString( strParam );			
+			processReplies();
+			//document.getElementById("selectcard").innerHTML = strMessage;
+			break;
+		}
+		case "AllCallbacksTriggersReply":
+		{	
+			doTriggersTable( packStr.getSection("T"),packStr.getSection("S") );
+			var strFunc = "getInfo()";
+			G_nCBCTStatusTimerID = setTimeout(strFunc,1000);
+			break;
+		}
+        case "GWError":
+        {
+           alert( "Got error message:" + strMessage );
+            break;
+        }
+
+        case "GWConfigInfo":
+        {
+				getAllTriggers();
+				//alert(strMessage);
+				var objSelect = G_configInfo.getSelectCardHTML( packStr, "CG4.0,CC4.0,CT4.1,CU4.1,CC4.2,E1.0,T1.0", "Select cellular card", "onSelectCard" );
+				//get all cars addresses for global volume set
+			    FillCardType( "CG4.0" );
+			    FillCardType( "CC4.0" );
+			    FillCardType( "CT4.1" );
+			    FillCardType( "CU4.1" );
+			    FillCardType( "CC4.2" );
+				FillCardType( "E1.0"  );
+				FillCardType( "T1.0"  );
+				FillCardType( "MG.0"  );
+				FillCardType( "LCR"   );
+				
+				doStatusTable();
+				//fill it up...
+				
+		
+            break;
+        }
+
+        default:
+        {
+            //alert( "Got unknown message:" + strMessage );
+            break;
+        }
+    }
+}
+/**********************************************************************************************/
+function FillCardType( strType )
+/**********************************************************************************************/
+{
+	var arTypeAddr = G_configInfo.getCardTypeAddresses( strType );
+	//alert(strType + ":" + arTypeAddr);
+    
+	if ( typeof( arTypeAddr ) != 'undefined' )
+	{
+		for (var i=0; i<arTypeAddr.length; i++)
+		{
+			G_arTypes.push( strType );
+			G_arAddresses.push ( arTypeAddr[i] );
+		}
+	
+	}
+		
+	//alert (G_arTypes);
+	//alert (G_arAddresses);
+}
+/**********************************************************************************************/
+function getAddressText( addr )
+/**********************************************************************************************/
+{
+		var strAddrText = "";
+		var arAddr = addr.split(".");
+		var LegCardNum = getCardNumber( arAddr[0] );
+		var LegChannelNum = arAddr[1];
+		for (var i=0; i<G_arAddresses.length; i++)
+		{
+			if ( G_arAddresses[i] == arAddr[0] )
+			{
+				strAddrText =  "Card " + LegCardNum +  " Ch." + LegChannelNum;
+				if ( LegCardNum!= "MG" && LegCardNum!= "LCR")
+					strAddrText += " (" + addrToName(G_arTypes[i]) + ")";
+				return strAddrText;
+			}
+		}
+		return addr;
+}
+function getCardNumber( addr )
+{
+	if ( (addr!="MG") && (addr != "LCR" ) )
+		return (parseInt( addr, 16 ) - 0x20);
+	else
+		return addr;
+	
+}
+function addrToName( strAddr )
+{
+	 var strName = strAddr; 
+	 switch ( strAddr) 
+	 {
+		case "T1.0":
+			strName = "PRI";
+			break;
+		case "E1.0":
+			strName = "PRI";
+			break;
+		case "MG.0":
+			strName = "MG";
+			break;
+		case "LCR":
+			strName = "LCR";
+			break;
+		case "CG4.0":
+			strName = "CG4";
+			break;
+		case "CC4.0":
+			strName = "CC4";
+			break;
+		case "":
+			strName = "";
+			break;
+		case "CT4.1":
+			strName = "CT4";
+			break;
+		case "CU4.1":
+			strName = "CU4";
+			break;
+		case "CC4.2":
+			strName = "CC4";
+			break;
+	 }
+	 return strName;
+}
+function getGWConfig()
+{
+    parent.frames[0].SendCommand( "GetGWConfig" );	
+}
+function getAllTriggers()
+{
+	strCommand = "GetAllCallbackTriggers /I317";
+	parent.frames[0].SendCommand( strCommand );
+}
+
+
+var G_nCBCTStatusTimerID;
+
+var G_nStatsCounter = 0;
+
+function getInfo()
+{
+    clearTimeout(G_nCBCTStatusTimerID);
+	var strCommand = "GetCallbackStatus /I315";
+	parent.frames[0].SendCommand( strCommand );
+	
+	strCommand = "GetCallthroughStatus /I316";
+	parent.frames[0].SendCommand( strCommand );
+		    
+	var strFunc = "getInfo()";
+    G_nCBCTStatusTimerID = setTimeout(strFunc,2000);
+	
+}
+
+
+
+</SCRIPT>
+
+<BODY onLoad="setTimeout('init()',100);" bgcolor="white">
+<font size=4 face="Arial">HyperConnect Resources Status</font>
+<hr>
+<!--<font face=Arial size=2>
+<div id="selectcard"></div>
+<div id="update_settings">No card selected</div>
+<br>
+-->
+</font>
+
+
+<font face=Arial size=2>
+<div id="debug"></div>
+
+<div class="tableContainer" id="id_DIVStatus" style="border-style: solid; border-width: thin; width: 720px; height: 500px;">
+</div>
+<br>
+<div class="tableContainer" id="tableTriggers"  style="border-style: solid; border-width: thin; width: 720px; height: 130;"></div>
+
+</BODY>
+</HTML>

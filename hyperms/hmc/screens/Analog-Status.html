@@ -1,0 +1,191 @@
+<HTML>
+<STYLE type=text/css>TABLE {
+	BORDER-RIGHT: #000000 1px solid; BORDER-TOP: #000000 1px solid; BORDER-LEFT: #000000 1px solid; BORDER-BOTTOM: #000000 1px solid; border-spacing: 0px; cell-spacing: 0px
+}
+TD {
+	PADDING-RIGHT: 0.5em; PADDING-LEFT: 0.5em; FONT-SIZE: 10pt; PADDING-BOTTOM: 2px; PADDING-TOP: 2px; FONT-FAMILY: Arial, Helvetica, sans-serif; WHITE-SPACE: nowrap
+}
+</STYLE>
+<SCRIPT language=javascript src="../utils/utilfuncs.js"></SCRIPT>
+<SCRIPT language=javascript src="../utils/alloc_logic.js"></SCRIPT>
+<SCRIPT>
+var G_nTotal = 8;
+var G_oStatus = new Array();
+var G_CellModuleStatusMap = new Array();
+
+G_CellModuleStatusMap[ "00" ] = "Idle";
+G_CellModuleStatusMap[ "01" ] = "Other leg is ringing";
+G_CellModuleStatusMap[ "02" ] = "Analog line is ringing";
+G_CellModuleStatusMap[ "03" ] = "Call connected";
+G_CellModuleStatusMap[ "04" ] = "Cleared";
+G_CellModuleStatusMap[ "05" ] = "Off-hook, waiting for digits";
+G_CellModuleStatusMap[ "06" ] = "Line connection error";
+G_CellModuleStatusMap[ "11" ] = "Dialing out on analog line";
+
+function init()
+{
+    var strHTML = "<font size=-1 face='Arial'><table id='tbStatus'>";
+    for (var i=0; i<G_nTotal; i++)
+    {
+            strHTML += "<tr height=10><td></td></tr>";
+			if (i < 4)
+			{
+				strHTML += "<tr><td align='right'><b>FXO " + (i+1) +  "</b>:</td>";
+			}
+			else
+			{
+				strHTML += "<tr><td align='right'><b>FXS " + (i-3) +  "</b>:</td>";
+			}
+            strHTML += "<td width=250 id='CGWStatus" + i + "'>-</td></tr>";
+			if (i == 3)
+			{
+				strHTML += "<tr height=30><td></td></tr>";
+			}
+			else if (i == 7)
+			{
+				strHTML += "<tr height=10><td></td></tr>";
+			}
+    }
+    strHTML += '</table></font>';
+
+
+    document.getElementById("DIV_Status").innerHTML = strHTML;
+    
+    for (var i=0; i<G_nTotal; i++)
+    {
+        var strStatus = "CGWStatus" + i;
+        G_oStatus[ i ] = document.getElementById(strStatus);
+    }
+    
+    getGWConfig();
+}
+
+function OnData( strMessage )
+{
+    var strCommand = new String( strMessage );
+    var strParam = strCommand.split( " " );
+    var strSection;
+    
+    var packStr = new PacketString( strParam[1] );
+    
+    switch ( strParam[0] )
+    {
+        case "Status":
+        {
+            var strStatus = new String( packStr.getSection( "g" ) );
+
+            var strStatus = new String(strStatus);
+            var arStatus  = strStatus.split( "," );
+            var strResult = "";
+            //alert(arStatus[ 3 ]);
+            for (var i=0; i<arStatus.length; i++)
+            {
+                //alert( i + " [" + arStatus[ i ] + "] " + G_CellModuleStatusMap[ arStatus[ i ] ] );
+                
+                G_oStatus[ i ].innerHTML = G_CellModuleStatusMap[ arStatus[ i ] ];
+            }
+            break;
+        }
+        
+        case "CardInfo":
+        {
+            var strCardInfo = new String( packStr.getSection( "i" ) );           
+            
+            
+            showCardType( strCardInfo );            
+            break;
+        }
+        
+        case "GWError":
+        {
+            alert( "Got error message:" + strMessage );
+            break;
+        }
+        
+        case "GWConfigInfo":
+        {
+			var objSelect = G_configInfo.getSelectCardHTML( packStr, "AN4.4", "Select Analog Card", "onSelectCard" );
+            var strHTML = objSelect.m_strHTML;
+			var strSelCard = objSelect.m_strSelCard;
+			var strSelCardType = objSelect.m_strSelCardType;
+          document.getElementById("selectcard").innerHTML = strHTML;
+          if ( strSelCard != null)
+          {
+            onSelectCard( strSelCard, strSelCardType );
+          }
+          else
+          {
+            document.getElementById("tbstatus").style.visibility = "hidden";
+          }
+            break;
+        }
+        
+        default:
+        {
+            //alert( "Got unknown message:" + strMessage );
+            break;
+        }
+    }
+}
+
+function getGWConfig()
+{
+    parent.frames[0].SendCommand( "GetGWConfig" );
+}
+
+function onSelectCard( strCard, strCardType )
+{
+    var nSlot = G_configInfo.calcSlotNumber( strCard );
+    getInfo( strCard );
+    getAlalnogCardType ( strCard );
+    document.getElementById("update_settings").innerHTML = getSelCardText( nSlot, strCardType );
+}
+
+var G_nCG4StatusTimerID;
+
+function getInfo( strAddress )
+{
+    clearTimeout(G_nCG4StatusTimerID);
+    parent.frames[0].SendCommand( "GetStatus /I124/A" + strAddress );
+    G_nCG4StatusTimerID = setTimeout("getInfo('" + strAddress + "')",2000);
+}
+
+function getAlalnogCardType( strCardAddr )
+{
+   var strCommand = "SendGenericPacket 65:/I100/Q1/A" + strCardAddr;
+   parent.frames[0].SendCommand( strCommand );
+   
+}
+function showCardType( strCardInfo )
+{
+     if ( strCardInfo != "null" && strCardInfo != "-")
+     {
+        var strCardType = "<b>Card Type: </b>" + strCardInfo + "<br>";
+        document.getElementById("card_type").innerHTML = strCardType;
+     }
+     else
+     {
+         document.getElementById("card_type").innerHTML = "";
+     }
+}
+
+</SCRIPT>
+
+<BODY onLoad="init()" bgcolor="white" onselectstart="return false;">
+<font size=4 face="Arial">Analog Cards Status</font>
+<hr>
+<font face=Arial size=2>
+<div id="selectcard"></div>
+
+<div id="update_settings"></div>
+
+
+<div id="card_type"></div>
+<br>
+
+</font>
+
+<div id="DIV_Status"></div>
+
+</BODY>
+</HTML>

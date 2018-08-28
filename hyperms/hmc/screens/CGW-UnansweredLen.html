@@ -1,0 +1,488 @@
+<HTML>
+<HEAD><TITLE>Cellular Gateways - Call Limits</TITLE></HEAD>
+<link type="text/css" href="../default.css" rel="stylesheet">
+<SCRIPT language=javascript src="../utils/utilfuncs.js"></SCRIPT>
+<SCRIPT language=javascript src="../utils/alloc_logic.js"></SCRIPT>
+<SCRIPT>
+
+var G_strLastSelectedCard;
+var G_strFeatureDesc   = new Array();
+var G_strFeatureMore   = new Array();
+var G_FeatureType      = new Array();
+var G_FeatureUnits     = new Array();
+var G_FeatureDependsOn = new Array();
+var G_FeatureExtraIdx  = new Array();
+
+G_strFeatureDesc[1]    = "<b>Set the limit for an outgoing cellular call to be answered:</b>";
+G_FeatureType[1]       = "TextAndOnOff";
+G_FeatureUnits[1]      = "Seconds";
+
+G_strFeatureDesc[2]    = "<b>Set the maximum length of an outgoing call:</b>";
+G_FeatureType[2]       = "TextAndOnOff";
+G_FeatureUnits[2]      = "Minutes";
+
+G_strFeatureDesc[3]    = "<b>Round the call length up to the maximum length (above) even if shorter:</b>";
+G_strFeatureMore[3]    = "(This feature cannot be used together with Call Counter Steps)";
+G_FeatureType[3]       = "OnOff";
+G_FeatureDependsOn[3]  = 2;
+
+G_strFeatureDesc[13]   = "<b>Grace period before disconnecting a call when counter has reached \"Minutes until SIM is blocked\":</b>";
+G_FeatureType[13]      = "TextOnly";
+G_FeatureUnits[13]     = "Minutes";
+
+G_strFeatureDesc[22]   = "<b>Force a delay between two outgoing GSM calls on the same channel:</b>";
+G_FeatureType[22]      = "TextAndOnOff";
+G_FeatureUnits[22]     = "Seconds";
+
+G_strFeatureDesc[28]   = "<b>Force a random delay between two outgoing GSM calls on the same channel:</b>";
+G_strFeatureMore[28]    = "(Set to at least 5 seconds if enabled)";
+G_FeatureType[28]      = "MinMaxAndOnOff";
+G_FeatureUnits[28]     = "Seconds";
+G_FeatureExtraIdx[28]  = 29;
+
+G_strFeatureDesc[29]   = "";
+G_FeatureType[29]      = "DummyType";
+
+var G_arFeatureValue   = new Array();
+var G_nLastFeature     = 50;
+var G_bInSavingProcess = false;
+var G_FirstFeature     = 0;
+var G_nCurrentFeatureNum;
+var G_nTimerID;
+
+// Received command from applet
+/**********************************************************************************************/
+function init()
+/**********************************************************************************************/
+{
+    getGWConfig();
+}
+
+/**********************************************************************************************/
+function getGWConfig()
+/**********************************************************************************************/
+{
+    parent.frames[0].SendCommand( "GetGWConfig" );
+}
+
+/**********************************************************************************************/
+function onSelectCard( strCard, strCardType )
+/**********************************************************************************************/
+{
+    var nSlot = G_configInfo.calcSlotNumber( strCard );
+    G_strLastSelectedCard = strCard;
+	G_FirstFeature        = 0;
+	cleanDivs();
+	G_nCurrentFeatureNum  = 1;
+    getNextFeature();
+    document.getElementById("update_settings").innerHTML = getSelCardText( nSlot, strCardType );
+}
+
+/**********************************************************************************************/
+function showSave()
+/**********************************************************************************************/
+{
+    var strSave = utils_getButtonHTML( "saveConfig()", "SaveSettings.jpg" );
+    document.getElementById("DIV_SaveConfig").innerHTML = strSave;
+}
+
+/**********************************************************************************************/
+function setSaveAckTimer()
+/**********************************************************************************************/
+{
+	G_bInSavingProcess = false; 
+	document.getElementById("DIV_SaveConfig").innerHTML = "Error saving (#" + G_nCurrentFeatureNum + "), please try again.";
+}
+
+/**********************************************************************************************/
+function saveConfig()
+/**********************************************************************************************/
+{
+	G_nCurrentFeatureNum = G_FirstFeature;
+	G_bInSavingProcess = true;
+	clearTimeout( G_nTimerID );
+	G_nTimerID = setTimeout(setSaveAckTimer,15000);
+	saveFeature( G_nCurrentFeatureNum )
+}
+
+/**********************************************************************************************/
+function CheckDependenciesOnFeature ( nFeature )
+/**********************************************************************************************/
+{
+	for (var i = 1 ; i <= G_nLastFeature ; i++ )
+	{
+		if ( G_FeatureDependsOn[ i ] != null )
+		{
+			if ( ( G_FeatureDependsOn[ i ] == nFeature ) && (document.getElementById("txt" + i) != null) )
+			{
+				document.getElementById("cb"  + i).checked = false;
+				document.getElementById("txt" + i).value   = "0";
+			}
+		}
+	}
+}
+
+/**********************************************************************************************/
+function saveFeature ( nFeature )
+/**********************************************************************************************/
+{	
+	var obj = document.getElementById("txt" + nFeature);
+	//should check and save each feature
+	if ( obj != null )
+	{
+		if ( obj.value == "0" )
+		{            
+			if ( ( G_FeatureType[ nFeature ] != "TextOnly" ) && ( G_FeatureType[ nFeature ] != "DummyType" ) )
+			{
+				document.getElementById("txt" + nFeature).disabled = true;
+				document.getElementById("cb" + nFeature).checked   = false;
+				CheckDependenciesOnFeature ( nFeature );
+				if ( ( G_FeatureType[ nFeature ] == "MinMaxAndOnOff" ) && ( G_FeatureExtraIdx[ nFeature ] ) )
+				{
+					document.getElementById("txt" + G_FeatureExtraIdx[ nFeature ]).value    = "0";
+					document.getElementById("txt" + G_FeatureExtraIdx[ nFeature ]).disabled = true;
+				}
+			}
+		}
+
+	    if ( IsNumeric( obj.value ) == false )
+	    {
+	        alert ( "Value should be a valid number!");
+	        return;
+	    }
+
+	    var strCommand = "SendGenericPacket 3d:/A" + G_strLastSelectedCard;
+	    strCommand += "/I" + (nFeature + 100) + "/G" + nFeature + "/i" + obj.value;
+    
+	    parent.frames[0].SendCommand( strCommand );
+	    document.getElementById("DIV_SaveConfig").innerHTML = "Saving configuration...";
+	}
+	else
+	{
+		G_bInSavingProcess = false;
+	}
+}
+
+/**********************************************************************************************/
+function OnData( strMessage )
+/**********************************************************************************************/
+{   
+    var strCommand = new String( strMessage );
+    var strParam = strCommand.split( " " );
+    var strSection;
+    
+    var packStr = new PacketString( strParam[1] );
+    
+    switch ( strParam[0] )
+    {
+        case "GWConfigInfo":
+        {
+			var objSelect = G_configInfo.getSelectCardHTML( packStr, "CG4.0,CC4.0,CT4.1,CU4.1,CC4.2", "Select cellular card", "onSelectCard" );
+            var strHTML = objSelect.m_strHTML;
+			var strSelCard = objSelect.m_strSelCard;
+			var strSelCardType = objSelect.m_strSelCardType;
+            document.getElementById("selectcard").innerHTML = strHTML;
+            if ( strSelCard != null )
+            {
+                onSelectCard( strSelCard, strSelCardType );
+            } 
+            break;
+        }
+        
+        case "Ack":
+        {
+			if ( G_bInSavingProcess )
+			{
+				clearTimeout( G_nTimerID );
+				G_nCurrentFeatureNum ++;
+				while ( G_nCurrentFeatureNum <= G_nLastFeature )
+				{
+					if ( G_FeatureType[ G_nCurrentFeatureNum ] != null )
+					{
+						if ( G_arFeatureValue[ G_nCurrentFeatureNum ] != "" )
+						{
+							G_nTimerID = setTimeout( setSaveAckTimer, 15000 );
+							saveFeature( G_nCurrentFeatureNum );
+							return;
+						}
+					}
+					G_nCurrentFeatureNum ++;
+				}
+				document.getElementById("DIV_SaveConfig").innerHTML = "Configuration saved.";
+			}	
+			break;
+        }
+        
+        case "GWError":
+        {
+			if ( packStr.getSection( "R" ) == "6F" )
+		 	{
+				notSupported();
+			}
+			else
+			{
+				if ( packStr.getSection( "I" ) == "770" )
+				{
+					G_arFeatureValue[ G_nCurrentFeatureNum ] = "";
+					G_nCurrentFeatureNum ++;
+					getNextFeature()
+				}					
+				else
+				{
+					//alert ( strMessage);
+					G_bInSavingProcess = false;
+					clearTimeout( G_nTimerID );
+					document.getElementById("DIV_SaveConfig").innerHTML = "Error saving configuration.";
+				}
+			}
+			break;
+        }
+
+        case "GenericReply":
+        {
+			if ( strParam[1].indexOf( "/#3d" ) > -1 )
+            {
+           		var nFeatureNum = parseInt( packStr.getSection( "g" ) );
+				var strValue    = packStr.getSection( "i" );
+				G_arFeatureValue[ nFeatureNum ] = strValue;
+				if ( strValue != "" )
+				{
+					if ( G_FirstFeature == 0 ) G_FirstFeature = nFeatureNum;
+				}
+				G_nCurrentFeatureNum ++;
+				getNextFeature( );
+            }
+			break;   
+        }
+        
+        default:
+        {
+            break;
+        }
+    }
+}
+
+/**********************************************************************************************/
+function showTables()
+/**********************************************************************************************/
+{
+	var strHTML = "<table bgcolor=whitesmoke>";
+
+	for (var strKey in G_FeatureType)
+	{
+		if ( ( G_arFeatureValue[strKey] != "" ) && ( G_FeatureType[strKey] != "DummyType" ) ) strHTML += DisplayTable(strKey);
+	}
+	strHTML += "</table>";
+	document.getElementById("DIV_Values").innerHTML = strHTML;
+}
+
+/**********************************************************************************************/
+function DisplayTable( nFeature )
+/**********************************************************************************************/
+{
+	var strHTML = "<tr><td><table border='0' bgcolor=white>";
+	strHTML += "<tr><td colspan='2' width='400'>" + G_strFeatureDesc[ nFeature ] + "</td></tr>";
+	switch ( G_FeatureType[ nFeature ] )
+	{
+		case "TextOnly":
+		{
+			strHTML += "<td><INPUT TYPE=TEXT size=1 name='txt" + nFeature;
+			strHTML += "' value='" + G_arFeatureValue[ nFeature ] + "' onFocus='showSave();'> ";
+			break;
+		}
+
+		case "OnOff":
+			strHTML += "<td width=20%>Enabled<INPUT TYPE='checkbox' NAME='cb" + nFeature + "' ";
+			if ( G_arFeatureValue[ nFeature ] == "1" )
+			{	       
+				strHTML += "CHECKED";
+			}
+			strHTML += " onClick='clickFunction(" + nFeature + ")' ></td>";
+			strHTML += "<td><INPUT TYPE=HIDDEN size=1 name='txt" + nFeature;
+			strHTML += "' value='" + G_arFeatureValue[ nFeature ] + "'> ";
+			break;
+			
+		case "TextAndOnOff":
+			if ( G_arFeatureValue[ nFeature ] == "0" )
+			{	        
+				strHTML += "<td width=20%>Enabled<INPUT TYPE='checkbox' NAME='cb" + nFeature;
+				strHTML += "'  onClick='clickFunction(" + nFeature + ")' ></td>";
+				strHTML += "<td><INPUT TYPE=TEXT size=1 name='txt" + nFeature;
+				strHTML += "' value='" + G_arFeatureValue[ nFeature ] + "' onFocus='showSave();' DISABLED> ";
+			}
+			else
+			{
+				strHTML += "<td width=20%>Enabled<INPUT TYPE='checkbox' NAME='cb" + nFeature;
+				strHTML += "'  CHECKED onClick='clickFunction(" + nFeature + ")' ></td>";
+				strHTML += "<td><INPUT TYPE=TEXT size=1 name='txt" + nFeature;
+				strHTML += "' value='" + G_arFeatureValue[ nFeature ] + "' onFocus='showSave();'> ";
+			}
+			break;
+
+		case "MinMaxAndOnOff":
+			if ( G_arFeatureValue[ nFeature ] == "0" )
+			{	        
+				strHTML += "<td width=20%>Enabled<INPUT TYPE='checkbox' NAME='cb" + nFeature;
+				strHTML += "'  onClick='clickFunction(" + nFeature + ")' ></td>";
+				strHTML += "<td>Minimum <INPUT TYPE=TEXT size=1 name='txt" + nFeature;
+				strHTML += "' value='" + G_arFeatureValue[ nFeature ] + "' onFocus='showSave();' DISABLED> ";
+				if ( G_FeatureExtraIdx[ nFeature ] )
+				{
+					strHTML += " and Maximum <INPUT TYPE=TEXT size=1 name='txt" + G_FeatureExtraIdx[ nFeature ];
+					strHTML += "' value='" + G_arFeatureValue[ G_FeatureExtraIdx[ nFeature ] ] + "' onFocus='showSave();' DISABLED> ";
+				}
+			}
+			else
+			{
+				strHTML += "<td width=20%>Enabled<INPUT TYPE='checkbox' NAME='cb" + nFeature;
+				strHTML += "'  CHECKED onClick='clickFunction(" + nFeature + ")' ></td>";
+				strHTML += "<td>Minimum <INPUT TYPE=TEXT size=1 name='txt" + nFeature;
+				strHTML += "' value='" + G_arFeatureValue[ nFeature ] + "' onFocus='showSave();'>";
+				if ( G_FeatureExtraIdx[ nFeature ] )
+				{
+					strHTML += " and Maximum <INPUT TYPE=TEXT size=1 name='txt" + G_FeatureExtraIdx[ nFeature ];
+					strHTML += "' value='" + G_arFeatureValue[ G_FeatureExtraIdx[ nFeature ] ] + "' onFocus='showSave();'> ";
+				}
+			}
+			break;
+
+		default:
+		{
+			break;
+		}
+	}
+
+	if ( G_FeatureUnits[ nFeature ] != null)
+	{
+		strHTML += G_FeatureUnits[ nFeature ];
+	}
+	strHTML += "</td></tr>";
+
+	if(G_strFeatureMore[ nFeature ] != null)
+	{
+		strHTML += "<tr><td colspan='2' width='400'>" + G_strFeatureMore[ nFeature ] + "</td></tr>";
+	}
+	strHTML += "</table></td></tr>";
+    return strHTML;
+}
+
+/**********************************************************************************************/
+function clickFunction( nFeature )
+/**********************************************************************************************/
+{
+	if ( G_FeatureType[ nFeature ] != "TextOnly" )
+	{
+		if ( document.getElementById("cb" + nFeature).checked == true )
+		{
+			if ( G_FeatureType[ nFeature ] == "TextAndOnOff" )
+			{
+				document.getElementById("txt" + nFeature).disabled = false;
+			}
+			else if ( G_FeatureType[ nFeature ] == "MinMaxAndOnOff" )
+			{
+				document.getElementById("txt" + nFeature).disabled = false;
+				if ( G_FeatureExtraIdx[ nFeature ] )
+				{
+					document.getElementById("txt" + G_FeatureExtraIdx[ nFeature ]).disabled = false;
+				}
+			}
+			else
+			{
+				document.getElementById("txt" + nFeature).value = "1";
+			}
+		}
+		else
+		{
+			if ( G_FeatureType[ nFeature ] == "TextAndOnOff" )
+			{
+				document.getElementById("txt" + nFeature).disabled = true;
+			}
+			else if ( G_FeatureType[ nFeature ] == "MinMaxAndOnOff" )
+			{
+				document.getElementById("txt" + nFeature).disabled = true;
+				if ( G_FeatureExtraIdx[ nFeature ] )
+				{
+					document.getElementById("txt" + G_FeatureExtraIdx[ nFeature ]).disabled = true;
+					document.getElementById("txt" + G_FeatureExtraIdx[ nFeature ]).value    = "0";
+				}
+			}
+			document.getElementById("txt" + nFeature).value = "0";
+
+			CheckDependenciesOnFeature ( nFeature );
+		}
+		showSave();
+	}
+}
+
+/**********************************************************************************************/
+function getNextFeature()
+/**********************************************************************************************/
+{
+	//Here we check all features (same OpCode and Q1,Q2...)
+	//Some or all of these might not be supported.
+    var strCommand = "SendGenericPacket 3d:/A" + G_strLastSelectedCard;
+
+	while ( G_nCurrentFeatureNum <= G_nLastFeature )
+	{
+		if ( G_FeatureType[G_nCurrentFeatureNum] != null )
+		{
+			strCommand += "/I770/Q" + G_nCurrentFeatureNum;
+			parent.frames[0].SendCommand( strCommand );
+			break;
+		}
+		else G_nCurrentFeatureNum ++;
+	}
+
+	if ( G_nCurrentFeatureNum > G_nLastFeature )
+	{
+		if ( G_FirstFeature != 0 )
+		{
+			showTables();
+		}
+		else
+		{
+			notSupported();
+		}
+	}
+}
+
+/**********************************************************************************************/
+function cleanDivs()
+/**********************************************************************************************/
+{
+	document.getElementById("DIV_SaveConfig").innerHTML = "";
+	document.getElementById("DIV_Values").innerHTML = "";
+}
+
+/**********************************************************************************************/
+function notSupported()
+/**********************************************************************************************/
+{
+	var strHTML = "<table><tr><td>These features are not supported by this card.</td></tr></table>";
+	cleanDivs();
+	document.getElementById("DIV_Values").innerHTML = strHTML;
+}
+
+</SCRIPT>
+
+<BODY onLoad="init()" bgcolor="white" ondragstart="return false;">
+<font size=4 face="Arial">Cellular Card Call Limits</font>
+<hr>
+
+<font face=Arial size=2>
+<div id="selectcard"></div>
+
+<div id="update_settings"></div>
+<br>
+
+<div id="DIV_Values" style="width:450px;height:450px;overflow:auto;">
+</div>
+
+<br>
+<div id="DIV_SaveConfig">
+</div>
+
+</font>
+
+</BODY>
+</HTML>

@@ -1,0 +1,254 @@
+<HTML>
+<HEAD><TITLE>Cellular Gateways - SIM Locks</TITLE></HEAD>
+<STYLE type=text/css>TABLE {
+	BORDER-RIGHT: #000000 1px solid; BORDER-TOP: #000000 1px solid; BORDER-LEFT: #000000 1px solid; BORDER-BOTTOM: #000000 1px solid; border-spacing: 0px; cell-spacing: 0px
+}
+TD {
+	PADDING-RIGHT: 0.5em; PADDING-LEFT: 0.5em; FONT-SIZE: 10pt; PADDING-BOTTOM: 2px; PADDING-TOP: 2px; FONT-FAMILY: Arial, Helvetica, sans-serif; WHITE-SPACE: nowrap
+}
+</STYLE>
+<SCRIPT language=javascript src="../utils/utilfuncs.js"></SCRIPT>
+<SCRIPT language=javascript src="../utils/alloc_logic.js"></SCRIPT>
+<SCRIPT>
+// Received command from applet
+function init()
+{
+    getGWConfig();
+}
+
+function getGWConfig()
+{
+    parent.frames[0].SendCommand( "GetGWConfig" );
+}
+
+var G_strLastSelectedCard;
+var G_nMSNValuesTimerID;
+var G_bIs4ChannelsCard;
+
+function onSelectCard( strCard, strCardType )
+{
+    var nSlot = G_configInfo.calcSlotNumber( strCard );
+    G_strLastSelectedCard = strCard;
+    document.getElementById("update_settings").innerHTML = getSelCardText( nSlot, strCardType );
+
+	document.getElementById("DIV_SIMLocks").innerHTML = "";
+	document.getElementById("DIV_OPRLocks").innerHTML = "";
+
+	if ( ( strCardType != "CG4.0" ) && ( strCardType != "CU4.1" ) )
+	{
+		var strHTML = "<table><tr><td>This feature is not supported by this card.</td></tr></table>";
+		document.getElementById("DIV_SIMLocks").innerHTML = strHTML;
+		return;
+	}
+	
+    getInfo( strCard );
+}
+
+function showSave()
+{
+    var strSave = utils_getButtonHTML( "saveValues()", "SaveSettings.jpg" );
+    document.getElementById("DIV_SaveConfig").innerHTML = strSave;
+}
+
+function saveValues()
+{
+	//var strSIMLockVal = document.getElementById( "SIMLock" ).value;
+	//var strOPRLockVal = document.getElementById( "OPRLock" ).value;
+	
+	//alert( "strSIMLockVal=" + strSIMLockVal + " strOPRLockVal=" + strOPRLockVal );
+	//return;
+	
+    var strCommand = "CellSetSIMLocks /A";
+    strCommand += G_strLastSelectedCard;
+    strCommand += "/I23/G";
+    
+    var strSIMLockVal = "";
+    var strOPRLockVal = "";
+    
+	 if (G_bIs4ChannelsCard)
+     {
+        for (var i=0; i<4; i++)
+        {
+            //Read all SIM locks: 
+            var strID = "SIMLock" + i; 
+            strSIMLockVal += document.getElementById(strID).value;           
+            if (i != 3)
+            {
+                strSIMLockVal += ",";
+            }
+            //Read all Opreator locks:
+            strID = "OPRLock" + i; 
+            strOPRLockVal += document.getElementById(strID).value;
+            if (i != 3)
+            {
+                strOPRLockVal += ",";
+            }
+        }
+	 }
+    else
+    {
+        strSIMLockVal = document.getElementById( "SIMLock" ).value;
+        strOPRLockVal = document.getElementById( "OPRLock" ).value;
+       	
+    }
+    
+    strCommand += strSIMLockVal;
+    parent.frames[0].SendCommand( strCommand );
+    // Set Operator Locks
+	 strCommand = "SendGenericPacket 94:/I32/A";  
+    strCommand += G_strLastSelectedCard;
+    strCommand += "/G" + strOPRLockVal;
+    parent.frames[0].SendCommand( strCommand );
+
+    document.getElementById("DIV_SaveConfig").innerHTML = "Saving configuration...";
+}
+
+function OnData( strMessage )
+{
+    var strCommand = new String( strMessage );
+    var strParam = strCommand.split( " " );
+    var strSection;
+    
+    var packStr = new PacketString( strParam[1] );
+    switch ( strParam[0] )
+    {
+        case "GWConfigInfo":
+        {
+			var objSelect = G_configInfo.getSelectCardHTML( packStr, "CG4.0,CC4.0,CT4.1,CU4.1,CC4.2", "Select cellular card", "onSelectCard" );
+          var strHTML = objSelect.m_strHTML;
+			var strSelCard = objSelect.m_strSelCard;
+			var strSelCardType = objSelect.m_strSelCardType;
+          document.getElementById("selectcard").innerHTML = strHTML;
+          if ( strSelCard != null )
+          {
+            onSelectCard( strSelCard, strSelCardType );
+          } 
+          break;
+        }
+        
+        case "Ack":
+        {
+            document.getElementById("DIV_SaveConfig").innerHTML = "Configuration saved.";
+            break;
+        }
+        
+        case "GWError":
+        {
+            document.getElementById("DIV_SaveConfig").innerHTML = "Error saving configuration.";
+            break;
+        }
+		
+		case "GenericReply":
+		{
+			var strID = packStr.getSection( "I" );
+			if ( strID != "28" )
+			{
+				return;
+			}
+            var strInfo = packStr.getSection( "g" );
+            var arParam = strInfo.split( "," );
+            displayTable( "DIV_OPRLocks", arParam ); 
+			return;
+		}
+		
+        case "CellSIMLocks":
+        {
+            clearTimeout(G_nMSNValuesTimerID);
+            var strInfo = packStr.getSection( "g" );
+            var arParam = strInfo.split( "," );
+            displayTable( "DIV_SIMLocks", arParam );
+			return;
+        }
+        
+        default:
+        {
+            // Send this to TCPServer log file ? internal log file ?
+            //alert( "Got unknown message:" + strMessage );
+            break;
+        }
+    }
+}
+
+function displayTable( strDIVName, arParam )
+{
+	var strLockType;
+	var strIDName;
+	
+	if ( strDIVName == "DIV_SIMLocks" )
+	{
+		strLockType = "SIM Lock";
+		strIDName = "SIMLock";
+	}
+	else
+	{
+		strLockType = "Operator Lock";
+		strIDName = "OPRLock";
+	}
+	
+    var strHTML = "";
+
+    if (arParam.length==1)
+    {
+       strHTML +=  "<table>"; 
+       G_bIs4ChannelsCard  = false;
+       strHTML += "<tr><td width=120>" + strLockType + "</td>";
+       strHTML += "<td><INPUT TYPE=TEXT size=14 name='" + strIDName + "'";
+       strHTML += " value='" + arParam[ 0 ] + "' onFocus='showSave();'></td></tr>";
+        
+    }
+    else
+    {
+       strHTML +=  "<b>" + strLockType + "</b><br><table>"; 
+       G_bIs4ChannelsCard = true; 
+       for (var i=0; i<arParam.length; i++)
+       {
+            strHTML += "<tr><td width=120>Module " + (i+1) + "</td>";
+            strHTML += "<td><INPUT TYPE=TEXT size=14 name='" + strIDName + i;
+            strHTML += "' value='" + arParam[ i ] + "' onFocus='showSave();'></td></tr>";
+       }
+        
+    }	
+    strHTML += "</table>";
+    document.getElementById( strDIVName ).innerHTML = strHTML;
+}
+
+function getInfo( strAddress )
+{
+    var strCommand = "CellGetSIMLocks /A";
+    strCommand += strAddress;
+    strCommand += "/I27";
+    parent.frames[0].SendCommand( strCommand );
+	
+	strCommand = "SendGenericPacket 94:/I28/A";  // Get Operator Locks
+	strCommand += strAddress; 
+    parent.frames[0].SendCommand( strCommand );
+	
+    G_nMSNValuesTimerID = setTimeout("getInfo('" + strAddress + "')",4000);
+}
+</SCRIPT>
+
+<BODY onLoad="init()" bgcolor="white" ondragstart="return false;">
+<font size=4 face="Arial">Cellular Card Locks</font>
+<hr>
+
+<font face=Arial size=2>
+<div id="selectcard"></div>
+
+<div id="update_settings"></div>
+<br>
+
+
+<div id="DIV_SIMLocks">
+</div>
+<br>
+<div id="DIV_OPRLocks">
+</div>
+
+<br>
+<div id="DIV_SaveConfig">
+</div>
+
+</font>
+
+</BODY>
+</HTML>

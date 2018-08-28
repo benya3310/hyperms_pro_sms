@@ -1,0 +1,200 @@
+<HTML>
+<HEAD><TITLE>Cellular Gateways - Serial Numbers</TITLE></HEAD>
+<STYLE type=text/css>TABLE {
+	BORDER-RIGHT: #000000 1px solid; BORDER-TOP: #000000 1px solid; BORDER-LEFT: #000000 1px solid; BORDER-BOTTOM: #000000 1px solid; border-spacing: 0px; cell-spacing: 0px
+}
+TD {
+	PADDING-RIGHT: 0.5em; PADDING-LEFT: 0.5em; FONT-SIZE: 10pt; PADDING-BOTTOM: 2px; PADDING-TOP: 2px; FONT-FAMILY: Arial, Helvetica, sans-serif; WHITE-SPACE: nowrap
+}
+</STYLE>
+<SCRIPT language=javascript src="../utils/utilfuncs.js"></SCRIPT>
+<SCRIPT language=javascript src="../utils/alloc_logic.js"></SCRIPT>
+<SCRIPT>
+var G_arModuleSerial;
+var G_arSIMSerial;
+var G_arSIMccid;
+var G_strAddress;
+var G_CCIDsupported;
+
+// Received command from applet
+function init()
+{
+    getGWConfig();
+}
+
+function getGWConfig()
+{
+    parent.frames[0].SendCommand( "GetGWConfig" );
+}
+
+var G_strLastSelectedCard;
+var G_nSerialNumsTimerID;
+var G_strCardType;
+
+function onSelectCard( strCard, strType )
+{
+	G_strCardType = strType;
+    var nSlot = G_configInfo.calcSlotNumber( strCard );
+    G_strLastSelectedCard = strCard;
+	G_strAddress = strCard;
+	G_CCIDsupported = 0;
+    getInfo( strCard );
+    document.getElementById("update_settings").innerHTML = getSelCardText( nSlot, strType );
+}
+
+function OnData( strMessage )
+{
+    var strCommand = new String( strMessage );
+    var strParam = strCommand.split( " " );
+    var strSection;
+    
+    var packStr = new PacketString( strParam[1] );
+    
+    switch ( strParam[0] )
+    {
+        case "GWConfigInfo":
+        {
+			var objSelect = G_configInfo.getSelectCardHTML( packStr, "CG4.0,CC4.0,CT4.1,CU4.1,CC4.2", "Select cellular card", "onSelectCard" );
+            var strHTML = objSelect.m_strHTML;
+			var strSelCard = objSelect.m_strSelCard;
+            document.getElementById("selectcard").innerHTML = strHTML;
+			var strSelCardType = objSelect.m_strSelCardType;
+            if ( strSelCard != null )
+            {
+                onSelectCard( strSelCard, strSelCardType );
+            }
+            break;
+        }
+        
+        case "CellModSerialReply":
+        {
+            clearTimeout(G_nSerialNumsTimerID);
+			var strCommand = "CellGetSIMSerial /A";
+			strCommand += G_strAddress;
+			strCommand += "/I272";
+			parent.frames[0].SendCommand( strCommand );
+			
+            var strInfo = packStr.getSection( "g" );
+            G_arModuleSerial = strInfo.split( "," );
+			break;
+        }
+        
+        case "CellSIMSerialReply":
+        {
+            var strInfo = packStr.getSection( "g" );
+            G_arSIMSerial = strInfo.split( "," );
+            strInfo = packStr.getSection( "q" );
+			if ( strInfo != null )
+			{
+				G_arSIMccid = strInfo.split( "," );
+				G_CCIDsupported = 1;
+			}
+			else
+			{
+				G_CCIDsupported = 0;
+			}
+			displaySerialTable();
+			break;
+		}
+		
+        default:
+        {
+            break;
+        }
+    }
+}
+
+function displaySerialTable()
+{
+    var strHTML = "<table>";
+
+	var strModuleSerialText	= "Module Serial Number";
+	var strSIMSerialText	= "SIM Serial Number";
+	
+	if ( G_strCardType == "CC4.0" || G_strCardType == "CT4.1" )
+	{
+		strModuleSerialText	= "ESN";
+		strSIMSerialText	= "NAM";
+	}
+	else if ( G_strCardType == "CC4.2" )
+	{
+		strModuleSerialText	= "ESN";
+		strSIMSerialText	= "IMSI";
+	}
+	else if ( ( ( G_strCardType == "CG4.0" ) || ( G_strCardType == "CU4.1" ) ) && ( G_CCIDsupported ) )
+	{
+		strModuleSerialText	= "Module IMEI";
+		strSIMSerialText	= "SIM IMSI";
+		var strSIMccidText	= "SIM CCID";		
+	}
+	
+	strHTML += "<tr bgcolor='#f5f5b0'><td width=90>Module</td>"
+	strHTML += "<td>" + strModuleSerialText + "</td>"
+	strHTML += "<td>" + strSIMSerialText + "</td>";
+	if ( strSIMccidText != null ) strHTML += "<td>" + strSIMccidText + "</td>";
+	strHTML += "</tr>";
+    for (var i=0; i<4; i++)
+    {
+		if (i%2 == 0)
+		{
+			strBgColor = "#e0e0e0";
+		}
+		else
+		{
+			strBgColor = "#d0d0d0";
+		}
+		
+        strHTML += "<tr bgcolor='" + strBgColor + "'><td>Module " + (i+1) + "</td>";
+        strHTML += "<td>" + G_arModuleSerial[ i ] + "</td>";
+        strHTML += "<td>" + G_arSIMSerial[ i ] + "</td>";
+		if ( strSIMccidText != null ) strHTML += "<td>" + G_arSIMccid[ i ] + "</td>";
+		strHTML += "</tr>";
+		
+/*
+        if (  G_arModuleSerial[ i ] !=  G_arSIMSerial[ i ] && G_arModuleSerial[ i ] != "")
+        {
+            strHTML += "<td>" + G_arSIMSerial[ i ] + "</td></tr>";
+        }
+        else
+        {
+            strHTML += "<td>" + "  </td></tr>";
+        }
+*/        
+        
+    }
+    strHTML += "</table>";
+    document.getElementById("DIV_SerialNums").innerHTML = strHTML;
+}
+
+function getInfo( strAddress )
+{
+    var strCommand = "CellGetModSerial /A";
+    strCommand += strAddress;
+    strCommand += "/I271";
+    parent.frames[0].SendCommand( strCommand );
+    G_nSerialNumsTimerID = setTimeout("getInfo('" + strAddress + "')",4000);
+}
+</SCRIPT>
+
+<BODY onLoad="init()" bgcolor="white" onselectstart="return false;">
+<font size=4 face="Arial">Cellular Card Serial Numbers</font>
+<hr>
+
+<font face=Arial size=2>
+<div id="selectcard"></div>
+
+<div id="update_settings"></div>
+<br>
+
+
+<div id="DIV_SerialNums">
+</div>
+
+<br>
+<div id="DIV_SaveConfig">
+</div>
+
+</font>
+
+</BODY>
+</HTML>

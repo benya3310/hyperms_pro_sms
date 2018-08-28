@@ -1,0 +1,22 @@
+<html>
+<head><font face="Arial">Please wait...</font></head>
+<SCRIPT>
+// Received command from applet
+function init()
+{
+	var strServerName	= parent.frames[0].getServerIP();
+	var strPassword		= parent.frames[0].getPassword();
+	var strLoc = "http://" + strServerName + "/cb/CallParamsAdmin.php?password=" + strPassword;
+	document.location.href = strLoc;
+}
+</script>
+<body onLoad="init();">
+<br><hr><center><font face="Arial">Please wait...</font></center><hr>
+<div id="progress" class="progress spinning" >
+    <h3 class="title"><span id="please_wait_title"></span></h3>
+    <div class="indicator">
+        <div class="value"></div>
+    </div>
+</div>
+</body>
+</html>

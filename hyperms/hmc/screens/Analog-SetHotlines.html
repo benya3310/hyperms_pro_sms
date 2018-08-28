@@ -1,0 +1,244 @@
+<html>
+<head>
+	<link type="text/css" href="../default.css" rel="stylesheet">
+	<TITLE>Analog Card - Destination Numbers</TITLE>
+</head>
+
+<SCRIPT language=javascript src="../utils/utilfuncs.js"></SCRIPT>
+<SCRIPT language=javascript src="../utils/alloc_logic.js"></SCRIPT>
+<SCRIPT>
+// Received command from applet
+function init()
+{
+    getGWConfig();
+}
+
+function getGWConfig()
+{
+    parent.frames[0].SendCommand( "GetGWConfig" );
+}
+
+var G_strLastSelectedCard;
+var G_nHotlinesTimerID;
+
+function onSelectCard( strCard, strCardType )
+{
+    var nSlot = G_configInfo.calcSlotNumber( strCard );
+    G_strLastSelectedCard = strCard;
+    getInfo( strCard );
+    getAlalnogCardType ( strCard );
+    document.getElementById("update_settings").innerHTML = getSelCardText( nSlot, strCardType );
+}
+
+function showSave()
+{
+    var strSave = utils_getButtonHTML( "saveHotlinesConfig()", "SaveSettings.jpg" );
+    document.getElementById("DIV_SaveConfig").innerHTML = strSave;
+}
+
+function saveHotlinesConfig()
+{
+    var strCommand = "AnalogSetHotline /A";
+    strCommand += G_strLastSelectedCard;
+    strCommand += "/I28/G";
+    
+    for (var i=0; i<8; i++)
+    {
+        var strID = "p" + i;
+            strCommand += document.getElementById(strID).value;
+        if (i != 7)
+        {
+            strCommand += ",";
+        }
+    }
+    //hotline is not available for first 4 channels (zero):
+    strCommand += "/i0,0,0,0,";
+    for (var i=4; i<8; i++)
+    {
+      
+        var strID = "blockChannel" + i;
+        
+            var chkBox = document.getElementById(strID);
+           
+            if (chkBox.checked==true)
+                strCommand += "1";
+            else
+                strCommand += "0";            
+        if (i != 7)
+        {
+            strCommand += ",";
+        }
+    }
+    //Send the command:    
+    parent.frames[0].SendCommand( strCommand );
+    document.getElementById("DIV_SaveConfig").innerHTML = "Saving configuration...";
+}
+
+function OnData( strMessage )
+{
+ 
+    var strCommand = new String( strMessage );
+    var strParam = strCommand.split( " " );
+    var strSection;
+    
+    var packStr = new PacketString( strParam[1] );
+    
+    switch ( strParam[0] )
+    {
+        case "GWConfigInfo":
+        {
+            var objSelect = G_configInfo.getSelectCardHTML( packStr, "AN4.4", "Select analog card", "onSelectCard" );
+            var strHTML = objSelect.m_strHTML;
+            var strSelCard = objSelect.m_strSelCard;
+            var strSelCardType = objSelect.m_strSelCardType;
+            document.getElementById("selectcard").innerHTML = strHTML;
+            if ( strSelCard != null )
+            {
+                onSelectCard( strSelCard, strSelCardType );
+            }
+            break;
+        }
+        
+        case "Ack":
+        {
+            document.getElementById("DIV_SaveConfig").innerHTML = "Configuration saved.";
+            break;
+        }
+        
+        case "CardInfo":
+        {
+            var strCardInfo = new String( packStr.getSection( "i" ) );           
+            
+            
+            showCardType( strCardInfo );            
+            break;
+        }
+        
+        case "GWError":
+        {
+            document.getElementById("DIV_SaveConfig").innerHTML = "Error saving configuration.";
+            break;
+        }
+
+        case "AnalogHotlineInfo":
+        {
+            clearTimeout(G_nHotlinesTimerID);
+            //Two parameters: Channel value (g) and is allowed (i)
+            var strInfo1 = packStr.getSection( "g" );
+            var strInfo2 = packStr.getSection( "i" );
+            var arParam1 = strInfo1.split( "," );
+            var arParam2 = strInfo2.split( "," );
+            displayTable( arParam1, arParam2 ); 
+        }
+        
+        default:
+        {
+            // Send this to TCPServer log file ? internal log file ?
+            //alert( "Got unknown message:" + strMessage );
+            break;
+        }
+    }
+}
+
+function displayTable( arParam1 ,arParam2 )
+{
+    var strHTML = "<table>";
+	document.getElementById("helpSection").className = "visibile";
+
+    for (var i=0; i<arParam1.length; i++)
+    {
+        var strChannel;
+        
+            if ( i < 4 )
+            {
+                strChannel = "FXO " + (i+1);
+            }
+            else
+            {
+                strChannel = "FXS " + (i-3);
+            }
+            strHTML += "<tr><td width=90>" + strChannel + "</td>";
+            strHTML += "<td><INPUT TYPE=TEXT size=14 name='p" + i;
+            strHTML += "' value='" + arParam1[ i ] + "' onFocus='showSave();'></td>";
+			if ( i >= 4 )
+			{
+				strHTML += "<td>Hotline<INPUT TYPE=CHECKBOX size=14 onClick='showSave();' id='blockChannel" + i + "'";
+				if (arParam2[i] == 1) 
+					strHTML += " CHECKED></td>";
+				else
+					strHTML += "></td>";
+			}
+            strHTML += "</tr>";
+			if (i == 3)
+			{
+				strHTML += "<tr height=10><td></td></tr>";
+			}
+	}
+  
+    strHTML += "</table>";
+    document.getElementById("DIV_Values").innerHTML = strHTML;
+}
+
+function getInfo( strAddress )
+{
+    var strCommand = "AnalogSetHotline /A";
+    strCommand += strAddress;
+    strCommand += "/I37/Q";
+    parent.frames[0].SendCommand( strCommand );
+    G_nHotlinesTimerID = setTimeout("getInfo('" + strAddress + "')",4000);
+}
+function getAlalnogCardType( strCardAddr )
+{
+   var strCommand = "SendGenericPacket 65:/I100/Q1/A" + strCardAddr;
+   parent.frames[0].SendCommand( strCommand );
+   
+}
+function showCardType( strCardInfo )
+{
+     if ( strCardInfo != "null" && strCardInfo != "-")
+     {
+        var strCardType = "<b>Card Type: </b>" + strCardInfo + "<br>";
+        document.getElementById("card_type").innerHTML = strCardType;
+     }
+     else
+     {
+         document.getElementById("card_type").innerHTML = "";
+     }
+}
+
+</SCRIPT>
+
+<BODY onLoad="init()" bgcolor="white" ondragstart="return false;">
+
+<font size=4 face="Arial">Analog Card Destination Numbers</font>
+<hr>
+
+<font face=Arial size=2>
+<div id="selectcard"></div>
+
+<div id="update_settings"></div>
+<br>
+
+<div id="card_type"></div>
+<br>
+
+<div id="DIV_Values">
+</div>
+
+<br>
+<div id="DIV_SaveConfig">
+</div>
+
+</font>
+<div id="helpSection" >
+	<div class="title">Destination Numbers</div>
+	A fixed destination number may be programmed for each channel of the Analog Card.<br />
+	For FXO channels, this number will be used as the destination for all calls arriving from the PSTN, such that
+	whenever a ring signal is detected, a call will be initiated through the paired resource to that number.<br />
+	For FXS channels, this number will be used only when Hotline mode is enabled, such that when the off-hook state 
+	is detected a call will be automatically generated through the paired resource to the pre-programmed destination
+	number (otherwise the user will hear a dialtone and manualy dial the number).<br />
+    </div>
+
+</BODY>
+</HTML>

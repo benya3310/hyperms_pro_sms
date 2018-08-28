@@ -1,0 +1,185 @@
+<HTML>
+<HEAD><TITLE>Cellular Gateways - SMS Triggers</TITLE></HEAD>
+<STYLE type=text/css>TABLE {
+	BORDER-RIGHT: #000000 1px solid; BORDER-TOP: #000000 1px solid; BORDER-LEFT: #000000 1px solid; BORDER-BOTTOM: #000000 1px solid; border-spacing: 0px; cell-spacing: 0px
+}
+TD {
+	PADDING-RIGHT: 0.5em; PADDING-LEFT: 0.5em; FONT-SIZE: 10pt; PADDING-BOTTOM: 2px; PADDING-TOP: 2px; FONT-FAMILY: Arial, Helvetica, sans-serif; WHITE-SPACE: nowrap
+}
+</STYLE>
+<SCRIPT language=javascript src="../utils/utilfuncs.js"></SCRIPT>
+<SCRIPT language=javascript src="../utils/alloc_logic.js"></SCRIPT>
+<SCRIPT>
+// Received command from applet
+function init()
+{
+    getGWConfig();
+}
+
+function getGWConfig()
+{
+    parent.frames[0].SendCommand( "GetGWConfig" );
+}
+
+var G_strLastSelectedCard;
+var G_nCLIBlockingTimerID;
+
+function onSelectCard( strCard )
+{
+    var nSlot = G_configInfo.calcSlotNumber( strCard );
+    G_strLastSelectedCard = strCard;
+    getInfo( strCard );
+    document.getElementById("update_settings").innerHTML = "Selected card at slot " + nSlot;
+}
+
+function showSave()
+{
+    var strSave = utils_getButtonHTML( "saveValues()", "SaveSettings.jpg" );
+    document.getElementById("DIV_SaveConfig").innerHTML = strSave;
+}
+
+function saveValues()
+{
+    var strCommand = "CellSMSTriggers /A";
+    strCommand += G_strLastSelectedCard;
+    strCommand += "/I232/G";
+
+    for (var i=0; i<4; i++)
+    {
+        var strID = "p" + i; 
+        if (document.getElementById(strID).checked)
+        {
+            // strCommand += "1";
+            strCommand += "2";  // Raw SMS callback
+        }
+        else
+        {
+            strCommand += "0";
+        }
+        
+        if (i != 3)
+        {
+            strCommand += ",";
+        }
+    }
+
+    parent.frames[0].SendCommand( strCommand );
+
+    document.getElementById("DIV_SaveConfig").innerHTML = "Saving configuration...";
+}
+
+function OnData( strMessage )
+{
+    var strCommand = new String( strMessage );
+    var strParam = strCommand.split( " " );
+    var strSection;
+    
+    var packStr = new PacketString( strParam[1] );
+    
+    switch ( strParam[0] )
+    {
+        case "GWConfigInfo":
+        {
+			var objSelect = G_configInfo.getSelectCardHTML( packStr, "CG4.0,CC4.2", "Select cellular card", "onSelectCard" );
+            var strHTML = objSelect.m_strHTML;
+			var strSelCard = objSelect.m_strSelCard;
+            document.getElementById("selectcard").innerHTML = strHTML;
+            if ( strSelCard != null )
+            {
+                onSelectCard( strSelCard );
+            }
+            break;
+        }
+        
+        case "Ack":
+        {
+            document.getElementById("DIV_SaveConfig").innerHTML = "Configuration saved.";
+            break;
+        }
+        
+        case "GWError":
+        {
+            document.getElementById("DIV_SaveConfig").innerHTML = "Error saving configuration.";
+            break;
+        }
+
+        case "CellSMSTriggersReply":
+        {
+            clearTimeout(G_nCLIBlockingTimerID);
+            var strInfo = packStr.getSection( "g" );
+            var arParam = strInfo.split( "," );
+            displayTable( arParam ); 
+        }
+        
+        default:
+        {
+            // Send this to TCPServer log file ? internal log file ?
+            //alert( "Got unknown message:" + strMessage );
+            break;
+        }
+    }
+}
+
+function displayTable( arParam )
+{
+    var strHTML = "<table>";
+    
+    for (var i=0; i<arParam.length; i++)
+    {
+        strHTML += "<tr><td width=90>Module " + (i+1) + "</td>";
+
+        //////////
+        strHTML += "<td><input type=radio id='p" + i + "' name='R" + i + "' ";
+        if ( arParam[ i ] == "1" || arParam[ i ] == "2" )
+        {
+            strHTML += "checked ";
+        }
+        strHTML += "onClick='showSave();'>Accept SMS Triggers</td>";
+        
+        strHTML += "<td><input type=radio name='R" + i + "' ";
+        if ( arParam[ i ] == "0" )
+        {
+            strHTML += "checked ";
+        }
+        strHTML += "onClick='showSave();'>No SMS Triggers";
+        strHTML += "</td></tr>";
+        //////////
+    }
+    
+    strHTML += "</table>";
+    
+    document.getElementById("DIV_Values").innerHTML = strHTML;
+}
+
+function getInfo( strAddress )
+{
+    var strCommand = "CellSMSTriggers /A";
+    strCommand += strAddress;
+    strCommand += "/I271";
+    parent.frames[0].SendCommand( strCommand );
+    G_nCLIBlockingTimerID = setTimeout("getInfo('" + strAddress + "')",4000);
+}
+</SCRIPT>
+
+<BODY onLoad="init()" bgcolor="white" onselectstart="return false;" ondragstart="return false;">
+<font size=4 face="Arial">Cellular Card SMS Callback Triggers</font>
+<hr>
+
+<font face=Arial size=2>
+<div id="selectcard"></div>
+
+<div id="update_settings"></div>
+<br>
+
+
+<div id="DIV_Values">
+</div>
+
+<br>
+<div id="DIV_SaveConfig">
+</div>
+
+</font>
+
+</BODY>
+</HTML>

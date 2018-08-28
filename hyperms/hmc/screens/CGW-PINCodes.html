@@ -1,0 +1,352 @@
+<HTML>
+<HEAD><TITLE>Cellular Cards - Configuration</TITLE></HEAD>
+<STYLE type=text/css>TABLE {
+	BORDER-RIGHT: #000000 1px solid; BORDER-TOP: #000000 1px solid; BORDER-LEFT: #000000 1px solid; BORDER-BOTTOM: #000000 1px solid; border-spacing: 0px; cell-spacing: 0px
+}
+TD {
+	PADDING-RIGHT: 0.5em; PADDING-LEFT: 0.5em; FONT-SIZE: 10pt; PADDING-BOTTOM: 2px; PADDING-TOP: 2px; FONT-FAMILY: Arial, Helvetica, sans-serif; WHITE-SPACE: nowrap
+}
+</STYLE>
+<SCRIPT language=javascript src="../utils/utilfuncs.js"></SCRIPT>
+<SCRIPT language=javascript src="../utils/alloc_logic.js"></SCRIPT>
+<SCRIPT>
+
+var G_arAddresses	   = new Array();
+var G_arTypes		   = new Array();
+var G_nSelectedMethod        = 0;
+var G_nCurrent				 = 0;
+
+var G_nCG4MonitorTimerID;
+
+
+// Received command from applet
+function init()
+{
+    getGWConfig();
+}
+
+function getGWConfig()
+{
+    parent.frames[0].SendCommand( "GetGWConfig" );
+}
+
+var G_strLastSelectedCard;
+var G_nPINCodesTimerID;
+
+function onSelectCard( strCard, strCardType )
+{
+    var nSlot = G_configInfo.calcSlotNumber( strCard );
+    G_strLastSelectedCard = strCard;
+    document.getElementById("update_settings").innerHTML = getSelCardText( nSlot, strCardType );
+
+	if ( strCardType == "CC4.0" || strCardType == "CT4.1" )
+	{
+		var strHTML = "<table><tr><td>This feature is not supported by this card.</td></tr></table>";
+		document.getElementById("DIV_PINCodes").innerHTML = strHTML;
+		return;
+	}
+	getInfo( strCard );
+}
+/**********************************************************************************************/
+function hideSave()
+/**********************************************************************************************/
+{
+    document.getElementById("DIV_SaveConfig").innerHTML = "";
+}
+/**********************************************************************************************/
+function showSave()
+/**********************************************************************************************/
+{
+    var strSave = utils_getButtonHTML( "savePINCodesConfig()", "SaveSettings.jpg" );
+    document.getElementById("DIV_SaveConfig").innerHTML = strSave;
+}
+/**********************************************************************************************/
+function savePINCodesConfig()
+/**********************************************************************************************/
+{
+	
+    var strCommand = "CellSetPINCodes /A";
+    strCommand += G_strLastSelectedCard;
+    strCommand += "/I23/G";
+	if ( G_nSelectedMethod == 0)
+	{	
+		for (var i=0; i<4; i++)
+		{
+			var strID = "p" + i; 
+			strCommand += document.getElementById(strID).value;
+			if (i != 3)
+			{
+				strCommand += ",";
+			}
+		}
+	}
+	else
+	{		
+		var strPinCodesValue = document.getElementById('pinCodeEntire').value;
+		var strPinCodes = strPinCodesValue + ',' + strPinCodesValue + ',' + strPinCodesValue + ',' + strPinCodesValue;
+		
+		if ( G_nSelectedMethod == 1 )
+		{
+			strCommand += strPinCodes;
+		}
+		else
+		{
+			//start a loop or all cards...			
+			G_nCurrent = 0;
+			savePINCodesEntireConfig(strPinCodes);
+			return;
+		}
+	}
+	
+    parent.frames[0].SendCommand( strCommand );
+
+    document.getElementById("DIV_SaveConfig").innerHTML = "Saving configuration...";
+}
+/**********************************************************************************************/
+function savePINCodesEntireConfig(strPinCodes)
+/**********************************************************************************************/
+{
+	if ( G_nCurrent == G_arAddresses.length)
+	{
+		
+		clearTimeout( G_nCG4MonitorTimerID );		
+		document.getElementById("DIV_SaveConfig").innerHTML = "Configuration Saved for all Cards (" + G_nCurrent + ") Successfully!";
+		return;
+	}    
+	var strCommand = "CellSetPINCodes ";
+	strCommand += "/I" + (10 + G_nCurrent);
+	strCommand += "/A" + G_arAddresses[G_nCurrent];
+	strCommand += "/G" + strPinCodes;
+	parent.frames[0].SendCommand( strCommand );
+	document.getElementById("DIV_SaveConfig").innerHTML = "Updating Card#" + (G_nCurrent+1);
+	G_nCurrent++;
+	G_nCG4MonitorTimerID = setTimeout("savePINCodesEntireConfig('"+strPinCodes+"')",1500);
+}
+/**********************************************************************************************/
+function OnData( strMessage )
+/**********************************************************************************************/
+{
+    var strCommand = new String( strMessage );
+    var strParam = strCommand.split( " " );
+    var strSection;
+    
+    var packStr = new PacketString( strParam[1] );
+    
+    switch ( strParam[0] )
+    {
+        case "GWConfigInfo":
+        {
+			var objSelect = G_configInfo.getSelectCardHTML( packStr, "CG4.0,CC4.0,CT4.1,CU4.1,CC4.2", "Select cellular card", "onSelectCard" );
+            var strHTML = objSelect.m_strHTML;
+			var strSelCard = objSelect.m_strSelCard;
+			var strSelCardType = objSelect.m_strSelCardType;
+            document.getElementById("selectcard").innerHTML = strHTML;
+            if ( strSelCard != null )
+            {
+                 onSelectCard( strSelCard, strSelCardType );
+            }
+			FillCardType( "CG4.0" );
+		    FillCardType( "CC4.0" );
+		    FillCardType( "CT4.1" );
+		    FillCardType( "CU4.1" );
+		    FillCardType( "CC4.2" );
+			sortCardsAddresses();  
+            break;
+        }
+        
+        case "Ack":
+        {
+			if ( G_nSelectedMethod != 2 )
+			{				
+				document.getElementById("DIV_SaveConfig").innerHTML = "Configuration saved.";
+				//move to single mode and show card's values
+				G_nSelectedMethod = 0;
+				getInfo(G_strLastSelectedCard);
+				
+			}
+			
+            break;
+        }
+        
+        case "GWError":
+        {
+			var strID = packStr.getSection( "I" );
+			if ( strID == "27" )
+			{
+				clearTimeout(G_nPINCodesTimerID);
+				document.getElementById("DIV_SaveConfig").innerHTML = "";
+				var strCause = packStr.getSection( "R" );
+				var strHTML = "<table><tr><td>" + ((strCause == "15") ? "Please set the PIN codes on the SIM-Server configuration application." : "This feature is not supported by this card.") + "</td></tr></table>";
+				document.getElementById("DIV_PINCodes").innerHTML = strHTML;
+				return;
+			}
+			var strCauseCode = packStr.getSection( "R" );
+			if ( strCauseCode == "6F")
+				document.getElementById("DIV_SaveConfig").innerHTML = "Not a GSM Card. Saving return code:"+strCauseCode;
+			else
+				document.getElementById("DIV_SaveConfig").innerHTML = "Error saving configuration. Error code:"+strCauseCode;	
+            break;
+        }
+
+        case "CellPINCodes":
+        {
+            clearTimeout(G_nPINCodesTimerID);
+            var strInfo = packStr.getSection( "g" );
+            var arParam = strInfo.split( "," );
+            displayPINCodesTable( arParam ); 
+        }
+        
+        default:
+        {
+            // Send this to TCPServer log file ? internal log file ?
+            //alert( "Got unknown message:" + strMessage );
+            break;
+        }
+    }
+}
+/**********************************************************************************************/
+function displayPinCodesTableEntire()
+/**********************************************************************************************/
+{
+var strHTML = "<table>";
+    
+   
+        strHTML += "<tr><td width=90>Pin Code</td>";
+        strHTML += "<td><INPUT TYPE=TEXT size=14 id='pinCodeEntire'";
+        strHTML += " value='' onFocus='showSave();'></td></tr>";
+   
+    
+    strHTML += "</table>";
+    
+    document.getElementById("DIV_PINCodes").innerHTML = strHTML;
+}
+/**********************************************************************************************/
+function displayPINCodesTable( arParam )
+/**********************************************************************************************/
+{
+	showMethodTable(0);
+	
+    var strHTML = "<table>";
+    
+    for (var i=0; i<arParam.length; i++)
+    {
+        strHTML += "<tr><td width=90>Module " + (i+1) + "</td>";
+        strHTML += "<td><INPUT TYPE=TEXT size=14 name='p" + i;
+        strHTML += "' value='" + arParam[ i ] + "' onFocus='showSave();'></td></tr>";
+    }
+    
+    strHTML += "</table>";
+    
+    document.getElementById("DIV_PINCodes").innerHTML = strHTML;
+}
+/**********************************************************************************************/
+function showMethodTable( nChecked )
+/**********************************************************************************************/
+
+{
+	var checked = new Array;
+	for (var i=0; i<3; i++)
+	{
+		if ( nChecked == i )
+		{
+			checked[ i ] = "checked";
+		}
+		else
+		{
+			checked[ i ] = "";
+		}
+	}
+	strHTML = "<br><table width='400'>"; 
+	strHTML += "<tr bgcolor='#eeeeee'>";
+	strHTML += "<td><input type='radio' onClick='onSelectedMethod(0)' name='SetMethod' " + checked[0] + ">Module Settings</td>";
+	strHTML += "<td><input type='radio' onClick='onSelectedMethod(1)' name='SetMethod' " + checked[1] + ">Entire Card</td>";
+	strHTML += "<td><input type='radio' onClick='onSelectedMethod(2)' name='SetMethod' " + checked[2] + ">Entire System</td>";
+	strHTML += "</tr></table><br>";
+    document.getElementById("mode").innerHTML = strHTML;
+}
+/**********************************************************************************************/
+function onSelectedMethod( nMethod )
+/**********************************************************************************************/
+{
+	G_nSelectedMethod = nMethod;
+	
+	if ( nMethod != 0 )
+	{
+		//add save button
+		hideSave();
+		displayPinCodesTableEntire();
+		
+	} 
+	else
+	{		
+		hideSave();
+		getInfo( G_strLastSelectedCard );
+		
+	}
+	
+	//refreshSliderPos();
+}
+/**********************************************************************************************/
+function FillCardType( strType )
+/**********************************************************************************************/
+{
+	var arTypeAddr = G_configInfo.getCardTypeAddresses( strType );
+        
+	if ( typeof( arTypeAddr ) != 'undefined' )
+	{
+		for (var i=0; i<arTypeAddr.length; i++)
+		{
+			G_arTypes.push( strType );
+		}
+		G_arAddresses = G_arAddresses.concat( arTypeAddr );
+	}
+}
+/**********************************************************************************************/
+function sortCardsAddresses()
+/**********************************************************************************************/
+{
+	var nAddress = new Array();
+	for ( var i=0; i<G_arAddresses.length; i++ )
+	{
+		nAddress[i] = parseInt(G_arAddresses[i] , 16);
+	}
+	nAddress.sort();
+	for ( var i=0; i<nAddress.length; i++ )
+	{
+		G_arAddresses[i] = nAddress[i].toString(16);
+	}
+}
+/**********************************************************************************************/
+function getInfo( strAddress )
+/**********************************************************************************************/
+{
+    var strCommand = "CellGetPINCodes /A";
+    strCommand += strAddress;
+    strCommand += "/I27";
+    parent.frames[0].SendCommand( strCommand );
+    G_nPINCodesTimerID = setTimeout("getInfo('" + strAddress + "')",4000);
+}
+</SCRIPT>
+
+<BODY onLoad="init()" bgcolor="white" ondragstart="return false;">
+<font size=4 face="Arial">Cellular Card PIN Codes</font>
+<hr>
+
+<font face=Arial size=2>
+<div id="selectcard"></div>
+
+<div id="update_settings"></div>
+<br>
+
+<div id="mode"></div>
+<div id="DIV_PINCodes">
+</div>
+
+<br>
+<div id="DIV_SaveConfig">
+</div>
+
+</font>
+
+</BODY>
+</HTML>

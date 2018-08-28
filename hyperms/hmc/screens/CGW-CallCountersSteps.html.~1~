@@ -1,0 +1,589 @@
+<HTML>
+<HEAD><TITLE>Cellular Card - Call Counters Steps</TITLE></HEAD>
+<STYLE type=text/css>
+TABLE {
+	BORDER-RIGHT: #000000 1px solid; BORDER-TOP: #000000 1px solid; BORDER-LEFT: #000000 1px solid; BORDER-BOTTOM: #000000 1px solid; border-spacing: 0px; }
+TD {
+	PADDING-RIGHT: 0.5em; PADDING-LEFT: 0.5em; FONT-SIZE: 10pt; PADDING-BOTTOM: 2px; PADDING-TOP: 2px; FONT-FAMILY: Arial, Helvetica, sans-serif; WHITE-SPACE: nowrap
+}
+.mDIV {
+    border-width: thick;
+	border-spacing: 20px;
+
+	border-color: red;
+	border-collapse: separate;
+	background-color: white;
+}
+.TableD{  border:solid 1px white; padding: 1px;font-family: Verdana; font-size: 10px;}
+.PlanRow{font-family: Verdana; font-size: 10px;}
+.Button{border:1px solid #A5C983;font-family: Verdana; font-size: 12px;}
+.TableLight{ border:solid 1px white; padding: 1px;font-family: Verdana; font-size: 10px;}
+.TableHeader{ background-color: #eff1ff; border:solid 0px #006699; color: black; padding: 1px; font-family: Verdana; font-size: 12px; }
+.TableHeaderBig{ background-color: #dedede; border:solid 0px #006699; color: black; padding: 1px; font-family: Verdana; font-size: 12px;}
+.TableHeaderDisable{ background-color: #FF615C; border:none 1px #FF1F31; color: black; padding: 1px; font-family: Verdana; font-size: 11px;}
+.TableHeaderEnable{ background-color: #7FD170; border:none 1px #7FD179; color: black; padding: 1px; font-family: Verdana; font-size: 11px;}
+.Cells{ background-color: #ffffff; border:solid 0px #006699; color: black; padding: 1px; font-family: Verdana; font-size: 12px;}
+</STYLE>
+<SCRIPT language=javascript src="../utils/utilfuncs.js"></SCRIPT>
+<SCRIPT language=javascript src="../utils/alloc_logic.js"></SCRIPT>
+<SCRIPT>
+// Received command from applet
+function init()
+{
+    getGWConfig();
+}
+
+function getGWConfig()
+{
+    parent.frames[0].SendCommand( "GetGWConfig" );
+}
+
+var G_strLastSelectedCard;
+var G_nSavingTimerID;
+var G_nModuleTBHeaders = 4;
+var G_nModuleToSave = 0;
+var G_bInSavingProcess = false;
+var G_nTimerID;
+
+function Module()
+{
+    this.bActive = 0;
+    this.arTimePeriod = "0";
+    this.arRepetitions = "0";
+    this.isActive = isModuleActive;    
+}
+function isModuleActive()
+{
+    return (this.bActive == 0) ? false:true;
+}
+var arModule = new Array(5);
+
+
+function onSelectCard( strCard, strCardType )
+{
+    var nSlot = G_configInfo.calcSlotNumber( strCard );
+    G_strLastSelectedCard = strCard;
+	G_nCurrentModule = 1;
+    getInfo( strCard );
+    document.getElementById("update_settings").innerHTML = getSelCardText( nSlot, strCardType );
+}
+function showSave()
+{
+	 var strSave = "&nbsp &nbsp <button onclick='saveConfig()' class='Button'>Save Settings</button>"
+	 document.getElementById("DIV_SaveConfig").innerHTML = strSave;
+}
+
+function isActivated( nModule)
+{
+	return document.getElementById("cb" + nModule).checked;
+
+}
+function getSelection( id )
+{
+	try{
+		var oSelect = document.getElementById( id );
+		return oSelect.options[oSelect.selectedIndex].text;
+	}
+	catch (e)
+	{
+		return null;
+	}
+}
+function getSelectionVal( id )
+{
+	try{
+   
+		var oSelect = document.getElementById( id );
+       for (var i=0; i<oSelect.childNodes[0].length; i++)
+            if ( oSelect.childNodes[0].options[i].selected )
+		        return oSelect.childNodes[0].options[i].value;
+        
+	}
+	catch (e)
+	{
+		return null;
+	}
+}
+function setSaveAckTimer()
+{
+	if ( G_nModuleToSave < 5 )
+	{
+		// time is over stop saving and report an error..
+		// do not wait for any Acks any more if Ack arrives - ignore it!
+		G_bInSavingProcess = false; 
+		document.getElementById("DIV_SaveConfig").innerHTML = "Error saving (0xA" + G_nModuleToSave + "), try to save again.";
+						
+	}
+}
+function saveConfig()
+{
+	//validity check 
+	var isValidModule =  true;
+	for ( var nModule=1; nModule<5; nModule++ )
+	{
+		var element = document.getElementById("TableM" + nModule);
+		var nRows   = element.firstChild.childNodes.length ;
+			
+		for (var i=G_nModuleTBHeaders ; i<nRows; i++)
+		{   		
+			try{
+				var strRep = document.getElementById("txtRep" + nModule + i).value;
+				
+				if ( strRep == "Unlimited" )
+				{
+					
+				}
+				else
+				{
+					if ( IsNumeric( strRep ) != false  &&  strRep !="0" && strRep!="" )
+					{
+						
+					}
+					else
+					{
+						alert( "Repetition No." + (i-(G_nModuleTBHeaders-1)) + " for Module " + nModule + " is invalid. Please enter a valid number (greater than zero).");
+						isValidModule = false;
+						break;
+						 
+					}
+				}
+			}
+			catch (e){
+			}		
+		}
+	}
+	if ( isValidModule )
+	{
+		clearTimeout( G_nTimerID );
+		G_nTimerID = setTimeout(setSaveAckTimer,15000);	
+		G_nModuleToSave=0;
+		G_bInSavingProcess = true; //indicates that we r waiting for Acks
+		saveModulesConfig();
+	}
+}
+function saveModulesConfig()
+{
+    //run over 4 modules tables generate commands
+	G_nModuleToSave++;	//started at zero
+	if (G_nModuleToSave < 5 )
+	{
+		var nActive = ( isActivated( G_nModuleToSave)==true)? 1:0;
+       var nResolution  =  getSelectionVal("resolution" + G_nModuleToSave );     
+		var element = document.getElementById("TableM" + G_nModuleToSave);
+		var nRows   = element.firstChild.childNodes.length ;
+		var strTimePeriod  = "";
+		var strRepetitions = "";
+		var isValidModule =  true;
+		//alert ("module:" + nModule+" Rows:" +nRows );
+		var i;
+		for (i=G_nModuleTBHeaders ; i<nRows; i++)
+		{   
+		
+			strTimePeriod  += getSelection("cbTime" + G_nModuleToSave + i);
+			try{
+				var strRep = document.getElementById("txtRep" + G_nModuleToSave + i).value;
+				
+				if ( strRep == "Unlimited" )
+				{
+					strRepetitions += "0";
+				}
+				else
+				{
+					if ( IsNumeric( strRep ) != false  &&  strRep !="0" && strRep!="" )
+					{
+						strRepetitions += strRep;
+					}
+					else
+					{
+						alert( "Repetition No." + (i-(G_nModuleTBHeaders-1)) + " for Module " + G_nModuleToSave + " is invalid. Please enter a valid number (greater than zero).");
+						isValidModule = false;
+						break;
+						 
+					}
+				}
+			}
+			catch (e){
+			}
+			if (i < nRows-1)
+			{
+				strTimePeriod  += ",";
+				strRepetitions += ",";
+			}
+		}
+		//complete command - add "," if less than 5 plans
+		for ( x=i;x<G_nModuleTBHeaders+5;x++)
+		{
+				strTimePeriod  += ",";
+				strRepetitions += ",";
+		
+		}
+						
+		 var strCommand = "SendGenericPacket 3a:/A" + G_strLastSelectedCard;
+        if ( nActive!=0)
+        {
+            if  ( nResolution == "sec" )
+                nActive=1;
+            if  ( nResolution == "min" )
+                nActive=2;    
+            
+        }
+    	strCommand += "/I77" + G_nModuleToSave + "/r" + G_nModuleToSave + "/G" + nActive +  "/t" + strTimePeriod + "/i" + strRepetitions;
+       //alert( strCommand);
+		if ( isValidModule )
+		{
+			 parent.frames[0].SendCommand( strCommand );
+		}
+		
+        document.getElementById("DIV_SaveConfig").innerHTML = "Saving configuration...";
+	}	
+}
+
+function OnData( strMessage )
+{  
+    var strCommand = new String( strMessage );
+    var strParam = strCommand.split( " " );
+    var strSection;
+    
+    var packStr = new PacketString( strParam[1] );
+    
+    switch ( strParam[0] )
+    {
+        case "GWConfigInfo":
+        {
+			var objSelect = G_configInfo.getSelectCardHTML( packStr, "CG4.0,CC4.0,CT4.1,CU4.1,CC4.2", "Select cellular card", "onSelectCard" );
+            var strHTML = objSelect.m_strHTML;
+			var strSelCard = objSelect.m_strSelCard;
+			var strSelCardType = objSelect.m_strSelCardType;
+            document.getElementById("selectcard").innerHTML = strHTML;
+            if ( strSelCard != null )
+            {
+                onSelectCard( strSelCard, strSelCardType );
+            } 
+            break;
+        }
+        
+        case "Ack":
+        {      
+			//alert( packStr.m_strMessage );  
+            if ( packStr.getSection( "I" ) == 774 )
+			{
+				clearTimeout( G_nTimerID );
+				G_bInSavingProcess = false;
+                document.getElementById("DIV_SaveConfig").innerHTML = "Configuration saved.";
+			}
+            else
+			{	
+				if  ( G_bInSavingProcess )
+				{
+					//reset a timer which will stop waiting and calling save func in case 
+					//the last save command will not reply  in X seconds
+					clearTimeout( G_nTimerID );
+					G_nTimerID = setTimeout(setSaveAckTimer,15000);				
+					saveModulesConfig();
+				}
+				else
+				{
+					// do nothing the Save Process has been done already!
+				}
+			}
+            break;
+        }
+        
+        case "GWError":
+        {
+			 if ( packStr.getSection( "R" ) == "6F" ||
+				  packStr.getSection( "R" ) == "15" )
+			 {
+			 	notSupported();
+			 }
+			 else
+            	document.getElementById("DIV_SaveConfig").innerHTML = "Error saving configuration.";
+            break;
+        }
+
+        case "GenericReply":
+        {
+            if ( strParam[1].indexOf( "/#3a" ) > -1 && strParam[1].indexOf( "/t" ) > -1)
+            {
+                
+                
+                var strModule = packStr.getSection( "r" );
+                //alert (  strModule +"|" + packStr.getSection( "g" ) +"|"+ packStr.getSection( "t" )+ "|" + packStr.getSection( "i" ) );
+                saveModuleData( strModule, packStr.getSection( "g" ), packStr.getSection( "t" ), packStr.getSection( "i" ), packStr.getSection( "L" ) );
+                
+                if ( G_nCurrentModule<=4 )
+                {
+                    getInfo();
+                }
+                else
+                {
+                    displayTable(); 
+                }
+            }
+			else
+			{
+				//notSupported();
+                alert(strMessage);
+			}
+			                    
+        }
+        
+        default:
+        {
+            // Send this to TCPServer log file ? internal log file ?
+            //alert( "Got unknown message:" + strMessage );
+            break;
+        }
+    }
+}
+
+function saveModuleData( strModule, strActive, strTimePeriod, strRepetitions, strMinSupport )
+{   //alert("strActive:"+strActive);
+    arModule[ strModule ]               = new Module();
+    arModule[ strModule ].bActive       = strActive; //0-disable, 1-in seconds. 2-in minutes    
+    arModule[ strModule ].arTimePeriod  = strTimePeriod.split(",");
+    arModule[ strModule ].arRepetitions = strRepetitions.split(","); //null - only in sconds, 2-sec/min according to the bActive (/g) value
+    if ( strMinSupport != null )        
+        arModule[ strModule ].bMinSupport  = true;
+    else
+        arModule[ strModule ].bMinSupport  = false;    
+    
+}
+
+function displayTable()
+{
+	//clean
+	cleanDivs();
+    //create table per module
+	var strHTML = "<table class='TableLight'><tr>";
+       
+    for ( var i=1; i<5 ; i++ )
+    {
+       strHTML += "<td valign=top><table class='TableD' id='TableM" + i +"'>";		
+       strHTML += "<tbody><tr>";
+		strHTML += "<td id='active" + i + "' class='" + ( arModule[ i ].isActive()==1 ? "TableHeaderEnable":"TableHeaderDisable" ) +  "' colspan=2 align=center>" + getActiveCB( arModule[ i ].isActive(), i) + "</td></tr>";
+       //if ( arModule[ i ].bMinSupport )
+          strHTML += "<tr><td  class='TableHeaderBig' colspan=2 align=center id='resolution" + i + "'> " + getResolutionCB( i, arModule[ i ].bActive, arModule[ i ].bMinSupport) +"</td></tr>";
+       //alert( "<tr><td  class='TableHeaderBig' colspan=2 align=center id='resolution" + i + "'> " + getResolutionCB( i, arModule[ i ].isActive(), arModule[ i ].bMinSupport) +"</td></tr>" );
+       strHTML += "<tr><td  class='TableHeaderBig' colspan=2 align=center>Module"+ i + " " + getRowLinks( i ) + "</td></tr>";
+       strHTML += "<tr><td class='TableHeaderBig'>Time Period</td><td class='TableHeaderBig'>Repetitions</td></tr>";       
+       strHTML += "</tbody></table></td>";
+    }   
+   strHTML += "</tr></table>";  
+   document.getElementById("Moudles").innerHTML = strHTML;
+    //fill each table with module's data
+    for ( var i=1; i<5 ; i++ )
+	{
+	   for ( var j=0; j<arModule[ i ].arRepetitions.length; j++)
+	   {
+	   		if ( arModule[ i ].arTimePeriod[ j ] != "" && arModule[ i ].arRepetitions[ j ] != "" )
+	            { 
+	   				addRow (i, arModule[ i ].arTimePeriod[j], arModule[ i ].arRepetitions[j], 0 );
+				}
+		}
+	}	
+}
+function getActiveCB( bIsActive, nModule)
+{
+ var cbHTML;
+ if ( bIsActive == true)
+    cbHTML = "Enabled <INPUT TYPE='checkbox' NAME='cb" + nModule + "'  CHECKED onClick='clickFunction( "+ nModule + ")'>";
+ else
+    cbHTML = "Disabled <INPUT TYPE='checkbox' NAME='cb" + nModule + "' onClick='clickFunction("+ nModule + ")' >";  
+ return cbHTML; 
+}
+function getRowLinks( nModule )
+{
+    var strHTML = "<a href='javascript:addRow(" + nModule + ",0,\"Unlimited\",1)' style='text-decoration: none;'><img border='0' src='plusicon.gif' alt='Add Counter Step'></a> ";
+    strHTML    += "<a href='javascript:removeRow(" + nModule + ")' style='text-decoration: none;'><img border='0' src='Minus.jpg' alt='Remove Counter Step'></a>";
+    return strHTML;
+}
+function addRow( nModule,strTime,strRep, nShowSave )
+{
+	var element = document.getElementById("TableM" + nModule);
+	var nRows = element.firstChild.childNodes.length;
+    if ( nRows < G_nModuleTBHeaders+5 && nRows > G_nModuleTBHeaders-1)
+	{
+		if ( nRows >G_nModuleTBHeaders  && nShowSave )
+		{
+			document.getElementById("txtRep" + nModule + (nRows-1) ).value = "";
+			document.getElementById("txtRep" + nModule + (nRows-1) ).disabled = false;
+		}
+		var tRow = document.createElement("tr");
+		var tableCell = getTD();		
+		tableCell.appendChild( getTimeCB( "cbTime" + nModule + nRows, strTime ) ) //getInput( "txtTime" + nModule + nRows, "" ) );
+		tRow.appendChild(tableCell);
+		tableCell = getTD();		
+		tableCell.appendChild(  getInput( "txtRep" + nModule + nRows, strRep ) );
+		tRow.appendChild(tableCell);		
+        element.firstChild.appendChild(tRow);
+		
+		if ( nShowSave )
+			showSave();
+		
+	}					
+}
+function removeRow( nModule )
+{	
+    var element = document.getElementById("TableM" + nModule);
+	var nRows = element.firstChild.childNodes.length;	
+    if ( nRows > G_nModuleTBHeaders+1)
+	{
+        element.firstChild.removeChild(element.firstChild.childNodes[ nRows-1 ]);
+		try{
+			document.getElementById("txtRep" + nModule + (nRows-2) ).value = "Unlimited";
+			document.getElementById("txtRep" + nModule + (nRows-2) ).disabled = true;
+		}
+		catch (exception) {
+				
+		}
+		showSave();
+	}
+}
+function getTD()
+{
+	var tableCell = document.createElement("td");
+	tableCell.setAttribute("align","center");
+	tableCell.className = "TableHeader";
+	return tableCell;
+}
+function getInput( id, value )
+{
+	var input = document.createElement("input");
+	input.setAttribute("type","text");
+	input.setAttribute("id",id  );			
+	input.className = "PlanRow";
+	input.setAttribute("size","9");
+	if ( value == "Unlimited" || value == "0")
+	{
+		input.disabled = true;
+		value="Unlimited";
+	}	
+	input.setAttribute("value",value);
+	input.onfocus = function(){ showSave(); };	
+	return input;	
+}
+function getTimeCB( id,selected )
+{
+	var oSelect = document.createElement("select");
+	oSelect.setAttribute("id",id);
+	oSelect.className = "PlanRow";
+	oSelect.onfocus = function(){ showSave(); };
+	for (var i=1; i<=60; i++)
+	{
+		if ( 60%i == 0)
+			{				
+				var oOption = document.createElement("OPTION");
+				oSelect.options.add ( oOption );
+				oOption.text = i.toString();
+				oOption.value =i;
+				if ( i == selected )				
+					oOption.setAttribute('selected', true);								
+			}
+	}
+	return oSelect;
+}
+
+function getResolutionCB( id, active, enabled )
+{
+//alert( id + "," + active  + "," + enabled );
+
+    //active 0,1,2 enabled true/fasle
+	
+	
+	
+	var strHTML    = "<SELECT name='resolution" + id + "' onchange='showSave();' class='PlanRow'>";
+	if ( enabled )
+	{   
+       if ( active == 1 || active == 0)
+       {
+           strHTML += "<option value='sec' selected>Seconds</option>";
+           strHTML += "<option value='min'>Minutes</option>";
+           }
+          
+       if ( active == 2)
+       {
+    	    strHTML += "<option value='sec'>Seconds</option>";
+           strHTML += "<option value='min' selected>Minutes</option>";
+           }
+    }
+    else
+    {
+         strHTML += "<option value='sec'>Seconds</option>";
+    }
+    
+    
+    strHTML += "</SELECT>";
+
+	//alert(strHTML);
+	return strHTML;
+
+}
+
+
+function clickFunction( nModule )
+{    
+	var elementCB = document.getElementById("cb" + nModule);
+	var elementTD = document.getElementById("active" + nModule);
+    if ( elementCB.checked == true)
+    {
+       elementTD.innerHTML = getActiveCB(true,nModule);
+	   elementTD.className = "TableHeaderEnable";	   
+	   showSave();	  
+    }
+    else
+    {
+		elementTD.innerHTML = getActiveCB(false, nModule);
+		elementTD.className = "TableHeaderDisable";		
+        showSave();		
+    }  
+}
+var G_nCurrentModule = 1;
+function getInfo( strAddress )
+{   
+ 	document.getElementById("DIV_SaveConfig").innerHTML = "Getting information...";
+    var strCommand = "SendGenericPacket 3a:/A" + G_strLastSelectedCard;
+    strCommand    += "/I97" + G_nCurrentModule + "/r" + G_nCurrentModule++ + "/Q";
+	//alert ( strCommand );
+    parent.frames[0].SendCommand( strCommand );
+        
+}
+function cleanDivs()
+{
+	document.getElementById("DIV_SaveConfig").innerHTML = "";
+}
+function notSupported()
+{
+	var strHTML = "<table><tr><td>This feature is not supported by this card.</td></tr></table>";
+	cleanDivs();
+	document.getElementById("Moudles").innerHTML = strHTML;
+}
+
+
+</SCRIPT>
+
+<BODY onLoad="init()" bgcolor="white" ondragstart="return false;">
+<font size=4 face="Arial">Cellular Card Call Counters Steps</font>
+<hr>
+
+<font face=Arial size=2>
+<div id="selectcard"></div>
+
+<div id="update_settings"></div>
+<br>
+<div id="Moudles" class='mDIV'></div>
+
+
+
+
+<div id="DIV_Values">
+</div>
+
+<br>
+<div id="DIV_SaveConfig">
+</div>
+
+</font>
+
+</BODY>
+</HTML>

@@ -1,0 +1,194 @@
+<HTML>
+<HEAD><TITLE>Cellular Cards - Modules Information</TITLE></HEAD>
+<STYLE type=text/css>TABLE {
+	BORDER-RIGHT: #000000 1px solid; BORDER-TOP: #000000 1px solid; BORDER-LEFT: #000000 1px solid; BORDER-BOTTOM: #000000 1px solid; border-spacing: 0px; cell-spacing: 0px
+}
+TD {
+	PADDING-RIGHT: 0.5em; PADDING-LEFT: 0.5em; FONT-SIZE: 10pt; PADDING-BOTTOM: 2px; PADDING-TOP: 2px; FONT-FAMILY: Arial, Helvetica, sans-serif; WHITE-SPACE: nowrap
+}
+</STYLE>
+<SCRIPT language=javascript src="../utils/utilfuncs.js"></SCRIPT>
+<SCRIPT language=javascript src="../utils/alloc_logic.js"></SCRIPT>
+<SCRIPT>
+// Received command from applet
+
+function init()
+{
+    getGWConfig();
+}
+
+function getGWConfig()
+{
+    parent.frames[0].SendCommand( "GetGWConfig" );
+}
+
+var G_strLastSelectedCard;
+var G_nCell3GInfoID;
+
+function onSelectCard( strCard, strCardType )
+{
+	clearTimeout(G_nCell3GInfoID);
+	var nSlot = G_configInfo.calcSlotNumber( strCard );
+    G_strLastSelectedCard = strCard;
+    document.getElementById("update_settings").innerHTML = getSelCardText( nSlot, strCardType );
+	
+	document.getElementById("DIV_Status").innerHTML = "";
+    G_nCell3GInfoID = setTimeout("getInfo('" + strCard + "')",5000);
+	getInfo( strCard );
+}
+
+function getInfo( strAddress )
+{
+    parent.frames[0].SendCommand( ".GetCardInfo /A" + strAddress + "/I124/Q2" );
+}
+
+function OnData( strMessage )
+{
+    var strCommand  = new String( strMessage );
+    var strParam    = strCommand.split( " " );
+    var packStr     = new PacketString( strParam[1] );
+    var FullpackStr = new PacketString( strCommand );
+	
+    switch ( strParam[0] )
+    {
+        case "GWConfigInfo":
+        {
+			//alert( strMessage );
+			var objSelect = G_configInfo.getSelectCardHTML( packStr, "CG4.0,CC4.0,CT4.1,CU4.1,CC4.2", "Select cellular card", "onSelectCard" );
+            var strHTML = objSelect.m_strHTML;
+			var strSelCard = objSelect.m_strSelCard;
+			var strSelCardType = objSelect.m_strSelCardType;
+            document.getElementById("selectcard").innerHTML = strHTML;
+            if ( strSelCard != null )
+            {
+                onSelectCard( strSelCard, strSelCardType );
+            } 
+            break;
+        }
+        
+        case "CardInfo":
+        {
+			var strCardAddr = packStr.getSection( "A" );
+			if ( strCardAddr != G_strLastSelectedCard )
+			{
+				// irrelevant address;
+				return;
+			}
+			
+			//alert( strMessage );
+			var strType = packStr.getSection( "g" );
+			var strVals = FullpackStr.getSection( "i" );
+			if ( strVals == null )
+			{
+				document.getElementById( "DIV_3GInfo" ).innerHTML = "";
+				document.getElementById("DIV_Status").innerHTML = "Selected card does not support this function.";
+				return;
+			}
+			
+			var arVals = strVals.split( "," );
+			var strIdPrefix;
+			//alert( strType );
+			
+			if ( strType == "2" )
+			{
+				parent.frames[0].SendCommand( ".GetCardInfo /A" + G_strLastSelectedCard + "/I125/Q4" );
+				strIdPrefix = "number";
+				displayTable( strVals );
+			}
+			else if ( strType == "4" )
+			{
+				parent.frames[0].SendCommand( ".GetCardInfo /A" + G_strLastSelectedCard + "/I126/Q1" );
+				strIdPrefix = "cellver";
+			}
+			else if ( strType == "1" )
+			{
+				strIdPrefix = "engine";
+				clearTimeout(G_nCell3GInfoID);
+			}
+			
+			if ( strVals == "" )
+			{
+				return;
+			}
+			
+			for (var i=0; i<4; i++)
+			{
+				var strId = strIdPrefix + (i+1); 
+				re = /\"/;
+				arVals[ i ] = arVals[ i ].replace( re, "" );
+				arVals[ i ] = arVals[ i ].replace( re, "" );
+				document.getElementById( strId ).innerHTML = arVals[ i ];
+			}
+			
+            break;
+        }
+        
+        case "GWError":
+        {
+            break;
+        }
+
+        default:
+        {
+            // Send this to TCPServer log file ? internal log file ?
+            //alert( "Got unknown message:" + strMessage );
+            break;
+        }
+    }
+}
+
+function displayTable( strVals )
+{
+	var strHTML = "<table width='300'>";
+
+    for (var i=1; i<=4; i++)
+    {
+		strHTML += "<tr><td><b>Module " + i + "</b></td><td></td></tr>";
+		strHTML += "<tr>";
+		strHTML += "<td>Cellular Engine Type:</td>";
+		strHTML += "<td id='engine" + i + "'></td>";
+		strHTML += "</tr>";
+
+		if ( strVals != "" )
+		{
+			strHTML += "<tr>";
+			strHTML += "<td>Cellular Line Number:</td>";
+			strHTML += "<td id='number" + i + "'></td>";
+			strHTML += "</tr>";
+		}
+
+		strHTML += "<tr>";
+		strHTML += "<td>Cellular Firmware Version:</td>";
+		strHTML += "<td id='cellver" + i + "'></td>";
+		strHTML += "</tr>";
+
+		strHTML += "<tr><td>&nbsp;</td><td></td></tr>";
+	}
+    strHTML += "</table>";
+
+	document.getElementById( "DIV_3GInfo" ).innerHTML = strHTML;
+}
+
+</SCRIPT>
+
+<BODY onLoad="init()" bgcolor="white" onselectstart="return false;" ondragstart="return false;">
+<font size=4 face="Arial">Cellular Card / Modules Information</font>
+<hr>
+
+<font face=Arial size=2>
+<div id="selectcard"></div>
+
+<div id="update_settings"></div>
+<br>
+
+<div id="DIV_3GInfo">
+</div>
+
+<br>
+<div id="DIV_Status">
+</div>
+
+</font>
+
+</BODY>
+</HTML>

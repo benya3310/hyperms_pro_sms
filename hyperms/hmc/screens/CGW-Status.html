@@ -1,0 +1,182 @@
+<HTML>
+<STYLE type=text/css>TABLE {
+	BORDER-RIGHT: #000000 1px solid; BORDER-TOP: #000000 1px solid; BORDER-LEFT: #000000 1px solid; BORDER-BOTTOM: #000000 1px solid; border-spacing: 0px; cell-spacing: 0px
+}
+TD {
+	PADDING-RIGHT: 0.5em; PADDING-LEFT: 0.5em; FONT-SIZE: 10pt; PADDING-BOTTOM: 2px; PADDING-TOP: 2px; FONT-FAMILY: Arial, Helvetica, sans-serif; WHITE-SPACE: nowrap
+}
+</STYLE>
+<SCRIPT language=javascript src="../utils/utilfuncs.js"></SCRIPT>
+<SCRIPT language=javascript src="../utils/alloc_logic.js"></SCRIPT>
+<SCRIPT>
+var G_nTotal = 4;
+var G_oStatus = new Array();
+var G_CellModuleStatusMap = new Array();
+
+G_CellModuleStatusMap[ "00" ] = "Idle";
+G_CellModuleStatusMap[ "01" ] = "Incoming call from cellular network";
+G_CellModuleStatusMap[ "02" ] = "Remote side ringing";
+G_CellModuleStatusMap[ "03" ] = "Call connected";
+G_CellModuleStatusMap[ "04" ] = "Call cleared";
+G_CellModuleStatusMap[ "11" ] = "Dialing out through cellular network";
+
+G_CellModuleStatusMap[ "F0" ] = "Module doesn't exist or is faulty";
+G_CellModuleStatusMap[ "F1" ] = "Module is being serviced";
+G_CellModuleStatusMap[ "F2" ] = "Channel is SIM locked";
+G_CellModuleStatusMap[ "F3" ] = "No Signal";
+G_CellModuleStatusMap[ "F4" ] = "Registration Error";
+G_CellModuleStatusMap[ "F5" ] = "Problem with PIN code";
+G_CellModuleStatusMap[ "F6" ] = "Missing SIM card";
+G_CellModuleStatusMap[ "F7" ] = "Call counter reached its limit";
+G_CellModuleStatusMap[ "F8" ] = "Not installed";
+G_CellModuleStatusMap[ "F9" ] = "Switching SIM cards";
+G_CellModuleStatusMap[ "FA" ] = "Used as a global system resource";
+G_CellModuleStatusMap[ "FB" ] = "SMS sending in progress";
+G_CellModuleStatusMap[ "FC" ] = "Scanning SIM cards";
+
+G_CellModuleStatusMap[ "E0" ] = "No link to remote SIM";
+G_CellModuleStatusMap[ "E1" ] = "Missing VSIM allocation";
+G_CellModuleStatusMap[ "E2" ] = "Remote SIM mode misconfigured";
+G_CellModuleStatusMap[ "E3" ] = "No communications with S-HUB card";
+G_CellModuleStatusMap[ "E4" ] = "Selected VSIM is already in use";
+G_CellModuleStatusMap[ "E5" ] = "VSIM mapping error";
+G_CellModuleStatusMap[ "E6" ] = "VSIM unmapped by SIM Server";
+G_CellModuleStatusMap[ "E7" ] = "Wrong SIM adapter connection";
+G_CellModuleStatusMap[ "E8" ] = "SIM adapter not inserted";
+G_CellModuleStatusMap[ "E9" ] = "Initializing";
+G_CellModuleStatusMap[ "EA" ] = "Serviced by SIM Server";
+G_CellModuleStatusMap[ "EB" ] = "Sleeping between calls";
+G_CellModuleStatusMap[ "EC" ] = "Used by VCG";
+G_CellModuleStatusMap[ "ED" ] = "Missing SIM tray";
+
+var G_strLastSelectedCardType;
+
+function init()
+{
+    var strHTML = "<font size=-1 face='Arial'><table>";
+    for (var i=0; i<G_nTotal; i++)
+    {
+            strHTML += "<tr height=10><td></td></tr>";
+            strHTML += "<tr><td align='right'><b>Module " + (i+1) +  "</b>:</td>";
+            strHTML += "<td width=250 id='CGWStatus" + i + "'>-</td></tr>";
+            strHTML += "<tr height=10><td></td></tr>";
+    }
+    strHTML += '</table></font>';
+
+
+    document.getElementById("DIV_Status").innerHTML = strHTML;
+    
+    for (var i=0; i<G_nTotal; i++)
+    {
+        var strStatus = "CGWStatus" + i;
+        G_oStatus[ i ] = document.getElementById(strStatus);
+    }
+    
+    getGWConfig();
+}
+
+function OnData( strMessage )
+{
+    var strCommand = new String( strMessage );
+    var strParam = strCommand.split( " " );
+    var strSection;
+    
+    var packStr = new PacketString( strParam[1] );
+    
+    switch ( strParam[0] )
+    {
+        case "Status":
+        {
+            var strStatus = new String( packStr.getSection( "g" ) );
+
+            var strStatus = new String(strStatus);
+            var arStatus  = strStatus.split( "," );
+            var strResult = "";
+			var strStatMsg = "";
+            //alert(arStatus[ 3 ]);
+            for (var i=0; i<arStatus.length; i++)
+            {
+                //alert( i + " [" + arStatus[ i ] + "] " + G_CellModuleStatusMap[ arStatus[ i ] ] );
+                
+				strStatMsg = G_CellModuleStatusMap[ arStatus[ i ] ];
+				if ( G_strLastSelectedCardType == "CC4.2" )
+				{
+					re = / SIM /;
+					strStatMsg = strStatMsg.replace( re, " RUIM " );
+				}
+                G_oStatus[ i ].innerHTML = strStatMsg;
+            }
+            break;
+        }
+        
+        case "GWError":
+        {
+            alert( "Got error message:" + strMessage );
+            break;
+        }
+        
+        case "GWConfigInfo":
+        {
+			var objSelect = G_configInfo.getSelectCardHTML( packStr, "CG4.0,CC4.0,CT4.1,CU4.1,CC4.2", "Select cellular card", "onSelectCard" );
+            var strHTML = objSelect.m_strHTML;
+			var strSelCard = objSelect.m_strSelCard;
+			var strSelCardType = objSelect.m_strSelCardType;
+            document.getElementById("selectcard").innerHTML = strHTML;
+            if ( strSelCard != null )
+            {
+                onSelectCard( strSelCard, strSelCardType );
+            }
+            else
+            {
+				document.getElementById("selectcard").innerHTML = "No cellular card was detected.";
+                document.getElementById("DIV_Status").innerHTML = "";
+            }
+            break;
+        }
+        
+        default:
+        {
+            //alert( "Got unknown message:" + strMessage );
+            break;
+        }
+    }
+}
+
+function getGWConfig()
+{
+    parent.frames[0].SendCommand( "GetGWConfig" );
+}
+
+function onSelectCard( strCard, strCardType )
+{
+    var nSlot = G_configInfo.calcSlotNumber( strCard );
+    G_strLastSelectedCardType = strCardType;
+    getInfo( strCard );
+    document.getElementById("update_settings").innerHTML = getSelCardText( nSlot, strCardType );
+}
+
+var G_nCG4StatusTimerID;
+
+function getInfo( strAddress )
+{
+    clearTimeout(G_nCG4StatusTimerID);
+    parent.frames[0].SendCommand( "GetStatus /I124/M0/A" + strAddress );
+    G_nCG4StatusTimerID = setTimeout("getInfo('" + strAddress + "')",2000);
+}
+
+</SCRIPT>
+
+<BODY onLoad="init()" bgcolor="white" onselectstart="return false;">
+<font size=4 face="Arial">Cellular Cards Status</font>
+<hr>
+<font face=Arial size=2>
+<div id="selectcard"></div>
+
+<div id="update_settings"></div>
+<br>
+</font>
+
+<div id="DIV_Status"></div>
+
+</BODY>
+</HTML>

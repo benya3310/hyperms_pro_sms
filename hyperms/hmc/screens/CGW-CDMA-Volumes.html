@@ -1,0 +1,228 @@
+<html>
+<head>
+<STYLE type=text/css>TABLE {
+	BORDER-RIGHT: #000000 1px solid; BORDER-TOP: #000000 1px solid; BORDER-LEFT: #000000 1px solid; BORDER-BOTTOM: #000000 1px solid; border-spacing: 0px; cell-spacing: 0px
+}
+TD {
+	PADDING-RIGHT: 0.5em; PADDING-LEFT: 0.5em; FONT-SIZE: 10pt; PADDING-BOTTOM: 2px; PADDING-TOP: 2px; FONT-FAMILY: Arial, Helvetica, sans-serif; WHITE-SPACE: nowrap
+}
+</STYLE>
+<link name="cssDefault" rel="StyleSheet" type="text/css" href="../utils/slider/WidgetAPI/Sliders/css/default.css">
+
+<!-- BROWSER ABSTRACTION LAYER SETUP FOLLOWS -->
+<SCRIPT language=javascript src="../utils/alloc_logic.js"></SCRIPT>
+<script language="javascript" src="../utils/slider/AbsLayers/BrowserAbstraction.js"></script>
+<script language="javascript" src="../utils/slider/AbsLayers/BrowserDetect.js"></script>
+<script language="javascript" src="../utils/slider/AbsLayers/BrowserAbstractionFactory.js"></script>
+<script>
+	var factory = new BrowserAbstractionFactory("../utils/slider/AbsLayers/");
+</script>
+<script language="javascript">
+	var BrowserLayer = factory.getAbstraction();
+	factory = null; // delete the reference to the BrowserAbstractionFactory
+</script>
+
+<!-- WIDGET API SETUP FOLLOWS -->
+<script language="javascript" src="../utils/slider/WidgetAPI/AbstractWidget.js"></script>
+<script language="javascript">
+	setWidgetPath("../utils/slider/WidgetAPI/");
+</script>
+<script language="javascript" src="../utils/slider/WidgetAPI/Sliders/Slider.js"></script>
+<title>Simple Widget Demo</title>
+</head>
+
+<SCRIPT language=javascript src="../utils/utilfuncs.js"></SCRIPT>
+
+<script language="javascript">
+<!--
+
+// The volume sliders are drawn according to the HTML layout. If the layout changes
+// they need to be redrawn. The HTML layout can change when the window is resized
+// therefore we catch the browser window resize event and refresh the volume slider
+// position when the window is resized.
+
+window.onresize = refreshSliderPos;
+
+// Define the array of cellular modules volume-in and volume-out sliders.
+var G_inVolumeSliders = new Array();
+
+var G_arVolumesIn = new Array();
+
+// Total number of cellular modules per cellular card.
+var G_nTotal = 4;
+
+function onVolumeChange( obj )
+{
+    updateVolumes();
+}
+
+function init()
+{
+    for (var i=0; i<G_nTotal; i++)
+    {
+        G_inVolumeSliders[ i ] = new Slider( BrowserLayer, "In", 8 );
+    }
+
+    strHTML = "";
+    
+    for (var i=0; i<G_nTotal; i++)
+    {
+        strHTML += "<b>Module " + (i+1) + "</b>:<br>";
+        strHTML += "<table width=250>";
+        strHTML += G_inVolumeSliders[i].getHTML();
+        strHTML += "</table>";
+        strHTML += "<BR>";
+    }
+
+    document.getElementById("sliders").innerHTML = strHTML;
+
+    refreshSliderPos();
+
+    getGWConfig();
+}
+
+var G_strLastSelectedCard;
+var G_nCG4UpdateVolumesTimerID;
+
+function updateVolumes()
+{
+    clearTimeout(G_nCG4UpdateVolumesTimerID);
+    var strCommand = "CellSetVolumes /I132/A" + G_strLastSelectedCard + "/v";
+    for (var i=0; i<4; i++)
+    {
+        strCommand += G_inVolumeSliders[i].getValue();
+		G_arVolumesIn[ i ] = G_inVolumeSliders[i].getValue();
+
+		if (i!=3)
+        {
+            strCommand += ",";
+        }
+    }
+    
+    parent.frames[0].SendCommand( strCommand );
+    G_nCG4UpdateVolumesTimerID = setTimeout("getInfo('" + G_strLastSelectedCard + "')",4000);
+    document.getElementById("update_settings").innerHTML = "Updating volumes...";
+}
+
+function getGWConfig()
+{
+    parent.frames[0].SendCommand( "GetGWConfig" );
+}
+
+//var G_strSaveText;
+
+function onSelectCard( strCard )
+{
+    var nSlot = G_configInfo.calcSlotNumber( strCard );
+
+    G_strLastSelectedCard = strCard;
+    var strSaveText = "Set volumes for Cellular card " + nSlot;
+    document.getElementById("update_settings").innerHTML = strSaveText;
+    /*
+    G_strSaveText = "<A href='javascript:updateVolumes()'>Save volume settings for card at slot " + nSlot + "</A>";
+    */
+    getInfo( strCard );
+}
+
+var G_nCG4VolumesTimerID;
+
+function getInfo( strAddress )
+{
+    clearTimeout(G_nCG4VolumesTimerID);
+    parent.frames[0].SendCommand( "CellGetVolumes /I123/A" + strAddress );
+    G_nCG4VolumesTimerID = setTimeout("getInfo('" + strAddress + "')",4000);
+}
+
+function OnData( strMessage )
+{
+    var strCommand = new String( strMessage );
+    var strParam = strCommand.split( " " );
+    var strSection;
+    
+    var packStr = new PacketString( strParam[1] );
+    
+    switch ( strParam[0] )
+    {
+        case "CellVolumes":
+        {
+            clearTimeout(G_nCG4VolumesTimerID);
+            var strVolumesIn	= new String( packStr.getSection( "v" ) );
+            G_arVolumesIn	= strVolumesIn.split( "," );
+
+            for (var i=0; i<4; i++)
+            {
+                G_inVolumeSliders[ i ].setValue( parseInt( G_arVolumesIn[ i ] ), 10 );
+            }
+
+            break;
+        }
+        
+        case "Ack":
+        {
+            document.getElementById("update_settings").innerHTML = "New volumes set successfully.";
+            clearTimeout(G_nCG4UpdateVolumesTimerID);
+            break;
+        }
+        
+        case "GWError":
+        {
+            clearTimeout(G_nCG4UpdateVolumesTimerID);
+            alert( "Got error message:" + strMessage );
+            document.getElementById("update_settings").innerHTML = "Error setting volumes";
+            break;
+        }
+
+        case "GWConfigInfo":
+        {
+		    var objSelect = G_configInfo.getSelectCardHTML( packStr, "CG4.0", "Select cellular card", "onSelectCard" );
+           var strHTML = objSelect.m_strHTML;
+		    var strSelCard = objSelect.m_strSelCard;
+           document.getElementById("selectcard").innerHTML = strHTML;
+           if ( strSelCard != null )
+           { 
+            onSelectCard( strSelCard );
+           } 
+           refreshSliderPos();
+           break;
+        }
+        
+        default:
+        {
+            // Send this to TCPServer log file ? internal log file ?
+            // alert( "Got unknown message:" + strMessage );
+            break;
+        }
+    }
+}
+
+function refreshSliderPos()
+{
+    for (var i=0; i<G_nTotal; i++)
+    {
+        G_inVolumeSliders[i].draw();
+		if ( G_arVolumesIn.length > 0 )
+		{
+			G_inVolumeSliders[ i ].setValue( parseInt( G_arVolumesIn[ i ] ), 10 );
+		}
+    }
+}
+
+//-->
+</script>
+
+<BODY onLoad="init()" bgcolor="white" onselectstart="return false;" >
+<font size=4 face="Arial">CDMA Card Volume Settings</font>
+<hr>
+
+<div id="selectcard"></div>
+
+<font face=Arial size=2>
+<div id="update_settings"></div>
+<br>
+
+<div id="sliders">
+</div>
+</font>
+
+</body>
+</html>

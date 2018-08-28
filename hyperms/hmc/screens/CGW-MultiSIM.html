@@ -1,0 +1,593 @@
+<HTML>
+<HEAD><TITLE>Cellular Cards - Multi-SIM Configuration</TITLE></HEAD>
+<STYLE type=text/css>TABLE {
+	BORDER-RIGHT: #000000 1px solid; BORDER-TOP: #000000 1px solid; BORDER-LEFT: #000000 1px solid; BORDER-BOTTOM: #000000 1px solid; border-spacing: 0px; cell-spacing: 0px
+}
+TD {
+	PADDING-RIGHT: 0.5em; PADDING-LEFT: 0.5em; FONT-SIZE: 10pt; PADDING-BOTTOM: 2px; PADDING-TOP: 2px; FONT-FAMILY: Arial, Helvetica, sans-serif; WHITE-SPACE: nowrap
+}
+</STYLE>
+<SCRIPT language=javascript src="../utils/utilfuncs.js"></SCRIPT>
+<SCRIPT language=javascript src="../utils/alloc_logic.js"></SCRIPT>
+
+<SCRIPT>
+	
+// Received command from applet
+var G_arConfig = new Array();
+// keep last saved status, once
+// save command receive ack it will be saved
+// as the current status (G_arConfig)
+var G_arTempConfig = new Array();
+//Keep l param - number of sims per channel
+var G_nNumOfSIMs = 0;
+
+var G_strID = "123";
+
+var G_arVsims = new Array();
+
+function init()
+{
+    getGWConfig();
+}
+
+function getGWConfig()
+{
+    parent.frames[0].SendCommand( "GetGWConfig" );
+}
+
+var G_strLastSelectedCard;
+var G_strLastSelectedCardType;
+//var G_nMultiSIMTimerID;
+
+function onSelectCard( strCard, strCardType )
+{
+    var nSlot = G_configInfo.calcSlotNumber( strCard );
+    G_strLastSelectedCard     = strCard;
+    G_strLastSelectedCardType = strCardType;
+    document.getElementById("update_settings").innerHTML = getSelCardText( nSlot, strCardType );
+
+	if ( ( strCardType != "CG4.0" ) && ( strCardType != "CU4.1" ) && ( strCardType != "CC4.2" ) )
+	{
+		var strHTML = "<table><tr><td>This feature is not supported by this (" + strCardType + ") card.</td></tr></table>";
+		document.getElementById("DIV_MultiSIM").innerHTML = strHTML;
+		return;
+	}
+	
+	getInfo( strCard );
+}
+
+function saveMultiSIMConfig( strTable )
+{	
+	if (G_nNumOfSIMs != 4)
+	{
+		saveNewMultiSIMConfig(strTable);
+		return;
+	}
+	
+	var strCmd = "";
+
+	switch ( strTable )
+	{
+		case "tableModule":
+		{
+			var strSave = "";
+			for (var i=1; i<=4; i++)
+			{
+				var strID = "Module" + i;
+				var sel = document.getElementById( strID ).sel;
+				if (sel == null || sel == -1 || parseInt(G_arConfig[i-1]) == sel )
+				{
+					sel = "";
+				}
+				strSave += sel;
+				if (i<4)
+				{
+					strSave += ",";
+				}
+			}
+			//save into temp configuration
+			var arSave = strSave.split(",");	
+			for ( var idx=0; idx< G_arConfig.length; idx++ )
+			{ 
+				
+				if ( arSave[ idx ] != "" )
+					G_arTempConfig[ idx ] = arSave[ idx ];
+				else
+					G_arTempConfig[ idx ] = G_arConfig[ idx ];				
+			}		
+			strCmd = "SetMultiSIM /I54/A" + G_strLastSelectedCard + "/G" + strSave;
+			//parent.frames[0].SendCommand( strCmd );
+			break;
+		}
+		
+		case "tableCard":
+		{
+			var sel = document.getElementById( "CardBatch" ).sel;
+			strCmd = "SetMultiSIM /I54/A" + G_strLastSelectedCard + "/G" + sel + "," + sel + "," + sel + "," + sel;
+			updateTempConfigArray( sel );
+			//parent.frames[0].SendCommand( strCmd );			
+			break;
+		}
+		
+		case "tableSystem":
+		{
+			var sel = document.getElementById( "SystemBatch" ).sel;
+			strCmd = "SetMultiSIM /I54/AFF/G" + sel + "," + sel + "," + sel + "," + sel;
+			updateTempConfigArray( sel );
+			//parent.frames[0].SendCommand( strCmd );			
+			break;
+		}		
+	}
+	if ( strCmd !== "" )
+	{
+		parent.frames[0].SendCommand( strCmd );
+    	document.getElementById("DIV_SaveConfig").innerHTML = "Saving configuration...";
+	
+	}
+	
+}
+function saveNewMultiSIMConfig( strTable )
+{	
+	var strCmd = "";
+	switch ( strTable )
+	{
+		case "tableModule":
+		{
+			var strSave = "";
+			for (var i=1; i<=4; i++)
+			{
+				var strID = "comboSIM" + i;
+				var sel = getSelection(strID);
+				
+				strSave += sel;
+				
+				if (i<4)
+				{
+					strSave += ",";
+				}
+			}
+			//save into temp configuration
+			var arSave = strSave.split(",");	
+			for ( var idx=0; idx< G_arConfig.length; idx++ )
+			{ 
+				
+				if ( arSave[ idx ] != "" )
+					G_arTempConfig[ idx ] = arSave[ idx ];
+				else
+					G_arTempConfig[ idx ] = G_arConfig[ idx ];				
+			}		
+			strCmd = "SetMultiSIM /I54/A" + G_strLastSelectedCard + "/G" + strSave;
+			// alert(strCmd);
+			// return;
+			//rent.frames[0].SendCommand( strCmd );
+			break;
+		}
+		
+		case "tableCard":
+		{
+			var strID = "comboCard";
+			var sel = getSelection(strID);			
+			strCmd = "SetMultiSIM /I54/A" + G_strLastSelectedCard + "/G"+ sel + "," + sel + "," + sel + "," + sel;			
+			updateTempConfigArray( sel );
+			// alert(strCmd);
+			// return;
+			//rent.frames[0].SendCommand( strCmd );			
+			break;
+		}
+		
+		case "tableSystem":
+		{
+			var strID = "comboSystem";
+			var sel = getSelection(strID);
+			strCmd = "SetMultiSIM /I54/AFF/G" + sel + "," + sel + "," + sel + "," + sel;
+			updateTempConfigArray( sel );
+			//alert(strCmd);
+			//return;
+			//rent.frames[0].SendCommand( strCmd );			
+			break;
+		}		
+	}
+	if ( strCmd !== "" )
+	{
+		parent.frames[0].SendCommand( strCmd );
+    	document.getElementById("DIV_SaveConfig").innerHTML = "Saving configuration...";
+	
+	}
+}
+function updateTempConfigArray( nSel )
+{
+	for ( var idx=0; idx< G_arTempConfig.length; idx++ )
+	{ 
+		G_arTempConfig[ idx ] = nSel;				
+	}	
+}
+function saveConfigArray()
+{
+	for ( var idx=0; idx< G_arConfig.length; idx++ )
+	{ 
+		G_arConfig[ idx ] = G_arTempConfig[ idx ]; 				
+	}
+}
+function OnData( strMessage )
+{
+    //strMessage += "/l5";
+   	//alert(strMessage);
+   
+    var strCommand = new String( strMessage );
+    var strParam = strCommand.split( " " );
+    var strSection;
+    
+    var packStr = new PacketString( strParam[1] );
+	
+    switch ( strParam[0] )
+    {
+        case "GWConfigInfo":
+        {
+			var objSelect = G_configInfo.getSelectCardHTML( packStr, "CG4.0,CC4.0,CT4.1,CU4.1,CC4.2", "Select cellular card", "onSelectCard" );
+			var strHTML = objSelect.m_strHTML;
+			var strSelCard = objSelect.m_strSelCard;
+			var strSelCardType = objSelect.m_strSelCardType;
+			document.getElementById("selectcard").innerHTML = strHTML;
+			if ( strSelCard != null )
+            { 
+                onSelectCard( strSelCard, strSelCardType );
+            }
+			break;
+        }
+        
+        case "Ack":
+        {
+			var strID = packStr.getSection( "I" );
+			if ( strID != "54" )
+			{
+				return;
+			}
+			saveConfigArray();
+            document.getElementById("DIV_SaveConfig").innerHTML = "Configuration saved (it might take up to 20 seconds until changes are visible).";
+            break;
+        }
+        
+        case "GWError":
+        {
+			var strID = packStr.getSection( "I" );
+			if ( strID == G_strID )
+			{
+				document.getElementById("DIV_SaveConfig").innerHTML = "";
+				//clearTimeout(G_nMultiSIMTimerID);
+				var strHTML = "<table><tr><td>This feature is not supported by this card.</td></tr></table>";
+				document.getElementById("DIV_MultiSIM").innerHTML = strHTML;
+				return;
+			}
+            document.getElementById("DIV_SaveConfig").innerHTML = "Error saving configuration (" + strMessage + ")";
+            break;
+        }
+
+		case "MultiSIMReply":
+		{
+			var strID = packStr.getSection( "I" );
+			if ( strID != G_strID )
+			{
+				return;
+			}
+            document.getElementById("DIV_SaveConfig").innerHTML = "";
+			
+            //clearTimeout(G_nMultiSIMTimerID);
+            var strInfo = packStr.getSection( "g" );
+            var arParam = strInfo.split( "," );
+			G_arConfig  = arParam;
+			strInfo     = packStr.getSection( "L" );
+			G_arSimServerMode = ( strInfo != null ) ? 1 : 0;
+			
+			strInfo     = packStr.getSection( "l" )
+			G_nNumOfSIMs = ( strInfo != null ) ? parseInt(strInfo) : 4;
+
+			if ( G_arSimServerMode == 0 )
+			{
+				displayMultiSIMTable( G_arConfig ); 
+			}
+			else
+			{
+				strCommand = "SendGenericPacket 48:/A";
+				strCommand += G_strLastSelectedCard;
+				strCommand += "/I357/r0/Q";
+				parent.frames[0].SendCommand( strCommand );
+			}
+			return;
+		}
+
+        case "GenericReply":
+        {
+			if ( ( strParam[1].indexOf( "/#48" ) > -1 ) && ( G_arSimServerMode ) )
+            {
+				var strInfo = packStr.getSection( "r" );
+				if ( strInfo == "0" )
+				{
+					var strVsimsList   = packStr.getSection( "q" );
+					var arVsimsPerChnl = strVsimsList.split( "|" );
+					for ( var i=0 ; i < arVsimsPerChnl.length ; i++ )
+					{
+						G_arVsims[ i ] = arVsimsPerChnl[i].split( "," );
+					}
+					displayMultiSIMTable( G_arConfig ); 
+				}
+            }
+			break;   
+        }
+		
+        default:
+        {
+            // Send this to TCPServer log file ? internal log file ?
+            //alert( "Got unknown message:" + strMessage );
+            break;
+        }
+    }
+}
+
+function updateSaveUI( strTable )
+{
+    var strSave = utils_getButtonHTML( "saveMultiSIMConfig('" + strTable + "')", "SaveSettings.jpg" );
+    document.getElementById("DIV_SaveConfig").innerHTML = strSave;
+}
+
+function updateObjSel( obj, nVal )
+{
+	//dump( obj.parentNode.parentNode );
+	
+	if ( G_nNumOfSIMs == 4 )
+		obj.parentNode.parentNode.sel=nVal;
+
+	updateSaveUI( obj.parentNode.parentNode.parentNode.parentNode.id );
+}
+
+function onTableModule()
+{
+	displayMultiSIMTable( G_arConfig, 0 );
+}
+function getSelection(sel)
+{	var selelctor = document.getElementById(sel);
+    return selelctor.options[selelctor.selectedIndex].value;  
+}
+function onTableCard()
+{
+	if ( G_nNumOfSIMs != 4)
+	{
+		onNewTableCard();
+		return;
+	}
+	strHTML  = "<table width='" + ( G_arSimServerMode ? "690" : "430" ) +"' id='tableCard'>";
+	strHTML += "<tr sel=-1 id='CardBatch'><td width='90'>All Modules</td>";	
+	for (var j=1; j<=G_nNumOfSIMs; j++)
+	{
+		strHTML += "<td width='" + ( G_arSimServerMode ? "150" : "85" ) + "'>";
+		strHTML += "<input type='radio' name='Card'";
+		strHTML += "onClick='updateObjSel( this, " + j + " );'";
+		strHTML += "> " + ((G_strLastSelectedCardType == "CC4.2") ? "RUIM" : "SIM") + j + "</td>";		
+	}
+	strHTML += "</tr></table>";
+	
+	showTable( strHTML, 1 );
+}
+function onNewTableCard()
+{
+	strHTML  = "<table border=0 width='" + ( G_arSimServerMode ? "690" : "430" ) +"' id='tableCard'>";
+	strHTML += "<tr sel=-1 id='CardBatch'><td width='25%'>All Modules</td>";
+	strHTML += "<td width='" + ( G_arSimServerMode ? "85" : "85" ) + "'>";
+	
+	strSelect  = "<select id='comboCard' onclick='updateObjSel(this)'>"
+
+	for (var j=1; j<=G_nNumOfSIMs; j++)
+	{			
+		strSelect += "<option value='"+j+"'>SIM"+j+"</option>";
+	}
+	strSelect += "</select>";
+
+	strHTML += strSelect + "</td></tr></table>";
+	
+	showTable( strHTML, 1 );
+}
+function onTableSystem()
+{
+	if ( G_nNumOfSIMs != 4)
+	{
+		onNewTableSystem();
+		return;
+	}
+	strHTML  = "<table width='" + ( G_arSimServerMode ? "690" : "430" ) +"' id='tableSystem'>";
+	strHTML += "<tr sel=-1 id='SystemBatch'><td width='90'>All Cards</td>";
+	for (var j=1; j<=4; j++)
+	{
+		strHTML += "<td width='" + ( G_arSimServerMode ? "150" : "85" ) + "'>";
+		strHTML += "<input type='radio' name='System'";
+		strHTML += "onClick='updateObjSel( this, " + j + " );'";
+		strHTML += "> " + ((G_strLastSelectedCardType == "CC4.2") ? "RUIM" : "SIM") + j + "</td>";
+	}
+	strHTML += "</tr></table>";
+
+	showTable( strHTML, 2 );
+}
+function onNewTableSystem()
+{
+	
+	strHTML  = "<table border=0 width='" + ( G_arSimServerMode ? "690" : "430" ) +"' id='tableSystem'>";
+	strHTML += "<tr sel=-1 id='SystemBatch'><td width='25%'>All Cards</td>";
+	strHTML += "<td width='" + ( G_arSimServerMode ? "85" : "85" ) + "'>";
+	
+	strSelect  = "<select id='comboSystem' onfocus='updateObjSel(this)'>";
+
+	for (var j=1; j<=G_nNumOfSIMs; j++)
+	{			
+		strSelect += "<option value='"+j+"'>SIM"+j+"</option>";
+	}
+	strSelect += "</select>";
+
+	strHTML += strSelect + "</td></tr></table>";
+	
+	showTable( strHTML, 2 );
+}
+function displayNewMultiSIMTable(arParam)
+{
+	strHTML = "<table border=0 width='" + ( G_arSimServerMode ? "690" : "430" ) +"' id='tableModule'>";
+    
+    for (var i=1; i<=4; i++)
+    {
+		var nSel = parseInt( arParam[ i-1 ] );
+        strHTML += "<tr sel=-1 id='Module" + i + "'><td width='25%'>Module " + i + "</td>";//Current SIM #<b>"+nSel+"</b></td>";
+		//strHTML += "<td width='" + ( G_arSimServerMode ? "150" : "85" ) + "'>";
+		strHTML += "<td>";
+		var strSelect  = "<select id='comboSIM"+i+"' onchange='updateObjSel(this)'>";
+
+		for (var j=1; j<=G_nNumOfSIMs; j++)
+		{
+			
+			var optText = ((G_strLastSelectedCardType == "CC4.2") ? "RUIM" : "SIM") + j;
+			
+			
+			if ( G_arSimServerMode )
+			{
+				//var strHTML += "<font color='#d0d0d0'>";
+				if ( G_arVsims[ i-1 ][ j-1 ] == "-" )
+				{
+					optText += " (No VSIM)";
+				}
+				else
+				{
+					optText += " (VSIM " + G_arVsims[ i-1 ][ j-1 ] + ")";
+				}
+				//strHTML += "</font>";
+			}
+
+			strSelect += "<option value='" + j + "'";
+			if (nSel==j)
+				strSelect += " selected ";
+		    strSelect += ">"+optText;"</option>";
+			
+		}
+		strSelect += "</select>";
+
+		strHTML += strSelect+"</td>";
+        strHTML += "</tr>";
+    }
+    
+    strHTML += "</table>";
+    showTable( strHTML, 0 );
+}
+
+function displayMultiSIMTable( arParam )
+{	
+	if ( G_nNumOfSIMs != 4)
+	{
+		displayNewMultiSIMTable(arParam);
+		return;
+	}
+	strHTML = "<table width='" + ( G_arSimServerMode ? "690" : "430" ) +"' id='tableModule'>";
+    
+    for (var i=1; i<=arParam.length; i++)
+    {
+		var nSel = parseInt( arParam[ i-1 ] );
+        strHTML += "<tr sel=-1 id='Module" + i + "'><td width='90'>Module " + i + "</td>";
+		for (var j=1; j<=4; j++)
+		{
+			strHTML += "<td width='" + ( G_arSimServerMode ? "150" : "85" ) + "'>";
+			strHTML += "<input type='radio' name='M" + i + "'";
+			if ( j == nSel )
+			{
+				strHTML += " checked ";
+			}
+			strHTML += "onClick='updateObjSel( this, " + j + " );'> ";
+			strHTML += ((G_strLastSelectedCardType == "CC4.2") ? "RUIM" : "SIM") + j;
+			if ( G_arSimServerMode )
+			{
+				strHTML += "<font color='#d0d0d0'>";
+				if ( G_arVsims[ i-1 ][ j-1 ] == "-" )
+				{
+					strHTML += " (No VSIM)";
+				}
+				else
+				{
+					strHTML += " (VSIM " + G_arVsims[ i-1 ][ j-1 ] + ")";
+				}
+				strHTML += "</font>";
+			}
+			strHTML += "</td>";
+		}
+        strHTML += "</tr>";
+    }
+    
+    strHTML += "</table>";
+
+	showTable( strHTML, 0 );
+}
+
+function showTable( strTable, nChecked )
+{
+	var checked = new Array;
+	for (var i=0; i<3; i++)
+	{
+		if ( nChecked == i )
+		{
+			checked[ i ] = "checked";
+		}
+		else
+		{
+			checked[ i ] = "";
+		}
+	}
+	strHTML = "<table width='" + ( G_arSimServerMode ? "690" : "430" ) +"'>";
+	strHTML += "<tr bgcolor='#eeeeee'>"
+	strHTML += "<td><input type='radio' onClick='onTableModule()' name='SetMethod' " + checked[0] + ">Module Settings</td>"
+	strHTML += "<td><input type='radio' onClick='onTableCard()' name='SetMethod' " + checked[1] + ">Entire Card</td>"
+	strHTML += "<td><input type='radio' onClick='onTableSystem()' name='SetMethod' " + checked[2] + ">Entire System</td>"
+	strHTML += "</tr></table>"
+	strHTML += strTable;
+    document.getElementById("DIV_MultiSIM").innerHTML = strHTML;
+}
+
+rnd.today=new Date();
+rnd.seed=rnd.today.getTime();
+
+function rnd()
+{
+        rnd.seed = (rnd.seed*9301+49297) % 233280;
+        return rnd.seed/(233280.0);
+};
+
+function rand(number)
+{
+        return Math.ceil(rnd()*number);
+};
+
+function getInfo( strAddress )
+{
+    var strCommand = "SetMultiSIM /Q/A";
+    strCommand += strAddress;
+	G_strID = "" + rand(999);
+	//alert( G_strID );
+    strCommand += "/I" + G_strID;
+    parent.frames[0].SendCommand( strCommand );
+    document.getElementById("DIV_SaveConfig").innerHTML = "Getting information...";
+	//G_nMultiSIMTimerID = setTimeout("getInfo(" + strAddress + ")",4000);
+}
+</SCRIPT>
+
+
+<BODY onLoad="init()" bgcolor="white" onselectstart="return false;" ondragstart="return false;">
+<font size=4 face="Arial">Multi-SIM Configuration</font>
+<hr>
+
+<font face=Arial size=2>
+<div id="selectcard"></div>
+
+<div id="update_settings"></div>
+<br>
+
+<div id="DIV_MultiSIM">
+</div>
+
+<br>
+<div id="DIV_SaveConfig">
+</div>
+
+</font>
+
+</BODY>
+</HTML>

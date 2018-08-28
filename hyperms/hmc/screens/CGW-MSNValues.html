@@ -1,0 +1,236 @@
+<html>
+<head>
+	<link type="text/css" href="../default.css" rel="stylesheet">
+	<TITLE>Cellular Gateways - MSN Values</TITLE>
+</head>
+
+<SCRIPT language=javascript src="../utils/utilfuncs.js"></SCRIPT>
+<SCRIPT language=javascript src="../utils/alloc_logic.js"></SCRIPT>
+<SCRIPT>
+// Received command from applet
+function init()
+{
+    getGWConfig();
+}
+
+function getGWConfig()
+{
+    parent.frames[0].SendCommand( "GetGWConfig" );
+}
+
+var G_strLastSelectedCard;
+var G_nMSNValuesTimerID;
+var G_nAutoMSNSupport = false;
+
+function onSelectCard( strCard, strCardType )
+{
+    var nSlot = G_configInfo.calcSlotNumber( strCard );
+    G_strLastSelectedCard = strCard;
+    getInfo( strCard );
+    document.getElementById("update_settings").innerHTML = getSelCardText( nSlot, strCardType );
+    document.getElementById("DIV_SaveConfig").innerHTML  = "";
+}
+
+function showSave()
+{
+    var strSave = utils_getButtonHTML( "saveMSNValuesConfig()", "SaveSettings.jpg" );
+    document.getElementById("DIV_SaveConfig").innerHTML = strSave;
+}
+
+function saveMSNValuesConfig()
+{
+    var strCommand = "CellSetMSNValues /A";
+    strCommand += G_strLastSelectedCard;
+    strCommand += "/I23/G";
+
+    for (var i=0; i<4; i++)
+    {
+        var strID = "p" + i; 
+        strCommand += document.getElementById(strID).value;
+        if (i != 3)
+        {
+            strCommand += ",";
+        }
+    }
+	if ( G_nAutoMSNSupport )
+	{
+		//add auto msn values per module:
+		strCommand += "/i";
+		for (var i=0; i<4; i++)
+    	{
+	        var strID = "a" + i; 
+	        var objAutoMSN = document.getElementById(strID);
+			strCommand += ( objAutoMSN.checked )? "1" : "0";
+	        if (i != 3)
+	        {
+	            strCommand += ",";
+	        }
+    	}
+
+		var obj = document.getElementById( "DigAmnt" );
+		if ( obj != null )
+		{
+			strCommand += "/l";
+			strCommand += obj.value;
+    	}
+	}
+	
+    parent.frames[0].SendCommand( strCommand );
+
+    document.getElementById("DIV_SaveConfig").innerHTML = "Saving configuration...";
+}
+
+function OnData( strMessage )
+{
+    var strCommand = new String( strMessage );
+    var strParam = strCommand.split( " " );
+    var strSection;
+    
+    var packStr = new PacketString( strParam[1] );
+    
+    switch ( strParam[0] )
+    {
+        case "GWConfigInfo":
+        {
+			var objSelect = G_configInfo.getSelectCardHTML( packStr, "CG4.0,CC4.0,CT4.1,CU4.1,CC4.2", "Select cellular card", "onSelectCard" );
+            var strHTML = objSelect.m_strHTML;
+			var strSelCard = objSelect.m_strSelCard;
+			var strSelCardType = objSelect.m_strSelCardType;
+            document.getElementById("selectcard").innerHTML = strHTML;
+            if ( strSelCard != null )
+            {
+                onSelectCard( strSelCard, strSelCardType );
+            } 
+            break;
+        }
+        
+        case "Ack":
+        {
+            document.getElementById("DIV_SaveConfig").innerHTML = "Configuration saved.";
+            break;
+        }
+        
+        case "GWError":
+        {
+            document.getElementById("DIV_SaveConfig").innerHTML = "Error saving configuration.";
+            break;
+        }
+
+        case "CellMSNValues":
+        {
+            clearTimeout(G_nMSNValuesTimerID);
+            var strInfo = packStr.getSection( "g" );
+			var strAutoMSNValues = packStr.getSection( "i" );			
+            var arParam = strInfo.split( "," );
+			var strDigitsToCompare = packStr.getSection( "l" );
+            displayTable( arParam, strAutoMSNValues, strDigitsToCompare ); 
+        }
+        
+        default:
+        {
+            // Send this to TCPServer log file ? internal log file ?
+            //alert( "Got unknown message:" + strMessage );
+            break;
+        }
+    }
+}
+
+function displayTable( arParam, strAutoMSNValues, strDigitsToCompare )
+{	
+    var strHTML     = "<table width=330>";
+	var strHelpText = "";
+ 	//check if this card supports Auto MSN
+	if ( strAutoMSNValues == null )
+	{
+		G_nAutoMSNSupport = false;
+		document.getElementById("helpSection").style.visibility = "hidden";
+	    for (var i=0; i<arParam.length; i++)
+	    {
+	        strHTML += "<tr><td width=90>Module " + (i+1) + "</td>";
+	        strHTML += "<td><INPUT TYPE=TEXT size=14 name='p" + i;
+	        strHTML += "' value='" + arParam[ i ] + "' onFocus='showSave();'></td></tr>";
+	    }
+		strHTML += "</table>";
+    }
+	else
+	{
+		G_nAutoMSNSupport = true;
+
+		arParamAuto  = strAutoMSNValues.split(',');
+		for (var i=0; i<arParam.length; i++)
+	    {
+	        strHTML += "<tr><td width=90>Module " + (i+1) + "</td>";
+	        strHTML += "<td><INPUT TYPE=TEXT size=14 name='p" + i;
+	        strHTML += "' value='" + arParam[ i ] + "' onFocus='showSave();'></td>";
+			strHTML += "<td><INPUT TYPE=CHECKBOX size=14 ";
+			if ( arParamAuto[ i ] == "1" )
+				strHTML += " CHECKED ";
+	        strHTML += "name='a" + i + "' value='" + arParamAuto[ i ] + "' onFocus='showSave();'>Auto MSN</td></tr>";
+	    }
+
+		if ( strDigitsToCompare != null )
+		{
+			strHTML += "</table><br><table width=330>";
+	        strHTML += "<tr><td width=230>Auto MSN digits amount to match</td>";
+			strHTML += "<td><select onChange='showSave();' name='DigAmnt'>";
+			for (var i=15 ; i>=2 ; i--)
+			{
+				strHTML += "<option value='" + i + "' "
+				if ( i == strDigitsToCompare )
+				{
+					strHTML += "selected ";
+				}
+				strHTML += ">" + i + "</option>";
+			}
+			strHTML += "</select></td></tr></table>"
+		}	
+
+		strHelpText += "<div class='title'>Auto MSN</div>";
+		strHelpText += "If a local user \"A\" called a remote user \"B\" through a cellular module (\"B\" will either see a CLI which is the ";
+		strHelpText += "cellular module's number or no CLI if blocked), and later on \"B\" calls the cellular module's number, the system will ";
+		strHelpText += "automatically route the incoming call directly to \"A\" (as \"A\" was the last local user to call \"B\" through that ";
+		strHelpText += "cellular module).";
+		if ( strDigitsToCompare != null )
+		{
+			strHelpText += "<br>The amount of rightmost digits to match on the dialed number \"B\" when it calls \"A\" back is configurable.";
+		
+		}
+		strHelpText += "<br />";
+		document.getElementById("helpSection").style.visibility = "visible";
+	}
+
+    document.getElementById("DIV_Values").innerHTML  = strHTML;
+    document.getElementById("helpSection").innerHTML = strHelpText;
+}
+
+function getInfo( strAddress )
+{
+    var strCommand = "CellGetMSNValues /A";
+    strCommand += strAddress;
+    strCommand += "/I27";
+    parent.frames[0].SendCommand( strCommand );
+    G_nMSNValuesTimerID = setTimeout("getInfo('" + strAddress + "')",4000);
+}
+</SCRIPT>
+
+<BODY onLoad="init()" bgcolor="white" ondragstart="return false;">
+	
+<font size=4 face="Arial">Cellular Card MSN Values</font>
+<hr>
+
+<font face=Arial size=2>
+<div id="selectcard"></div>
+
+<div id="update_settings"></div>
+<br>
+
+<div id="DIV_Values"></div>
+<br>
+<div id="DIV_SaveConfig"></div>
+<br>
+
+</font>
+<div id="helpSection" style="visibility: hidden;"></div>
+
+</BODY>
+</HTML>

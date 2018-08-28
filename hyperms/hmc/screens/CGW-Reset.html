@@ -1,0 +1,193 @@
+<HTML>
+<HEAD><TITLE>Cellular Cards - Configuration</TITLE></HEAD>
+<STYLE type=text/css>TABLE {
+	BORDER-RIGHT: #000000 1px solid; BORDER-TOP: #000000 1px solid; BORDER-LEFT: #000000 1px solid; BORDER-BOTTOM: #000000 1px solid; border-spacing: 0px; cell-spacing: 0px
+}
+TD {
+	PADDING-RIGHT: 0.5em; PADDING-LEFT: 0.5em; FONT-SIZE: 10pt; PADDING-BOTTOM: 2px; PADDING-TOP: 2px; FONT-FAMILY: Arial, Helvetica, sans-serif; WHITE-SPACE: nowrap
+}
+</STYLE>
+<SCRIPT language=javascript src="../utils/utilfuncs.js"></SCRIPT>
+<SCRIPT language=javascript src="../utils/alloc_logic.js"></SCRIPT>
+<SCRIPT>
+// Received command from applet
+var G_arBtnArray = new Array();
+var G_strID = "121";
+
+function preFetch( strImage, nWidth, nHeight )
+{
+	G_arBtnArray[ strImage ] = new Image(nWidth, nHeight);
+	G_arBtnArray[ strImage ].src = strImage;
+}
+
+preFetch( "Up-Reset.jpg", 46, 24 );
+preFetch( "Down-Reset.jpg", 46, 24 );
+preFetch( "Up-Refresh.jpg", 89, 31 );
+preFetch( "Down-Refresh.jpg", 89, 31 );
+
+function init()
+{
+    getGWConfig();
+}
+
+function getGWConfig()
+{
+    parent.frames[0].SendCommand( "GetGWConfig" );
+}
+
+var G_strLastSelectedCard;
+
+function onSelectCard( strCard, strCardType )
+{
+    var nSlot = G_configInfo.calcSlotNumber( strCard );
+    G_strLastSelectedCard = strCard;
+    document.getElementById("update_settings").innerHTML = getSelCardText( nSlot, strCardType );
+	document.getElementById("DIV_Status").innerHTML = "";
+	displayResetTable( strCardType );
+}
+
+
+function OnData( strMessage )
+{
+    var strCommand = new String( strMessage );
+    var strParam = strCommand.split( " " );
+    var strSection;
+    
+    var packStr = new PacketString( strParam[1] );
+	
+    switch ( strParam[0] )
+    {
+        case "GWConfigInfo":
+        {
+			//alert( strMessage );
+			var objSelect = G_configInfo.getSelectCardHTML( packStr, "CG4.0,CC4.0,CT4.1,CU4.1,CC4.2", "Select cellular card", "onSelectCard" );
+            var strHTML = objSelect.m_strHTML;
+			var strSelCard = objSelect.m_strSelCard;
+			var strSelCardType = objSelect.m_strSelCardType;
+            document.getElementById("selectcard").innerHTML = strHTML;
+            if ( strSelCard != null )
+            {
+                onSelectCard( strSelCard, strSelCardType );
+            }    
+            break;
+        }
+        
+        case "GWError":
+        {
+			var strID = packStr.getSection( "I" );
+			if ( strID == G_strID )
+			{
+				document.getElementById("DIV_Status").innerHTML = "Error during reset";
+			}
+            break;
+        }
+
+        default:
+        {
+            // Send this to TCPServer log file ? internal log file ?
+            //alert( "Got unknown message:" + strMessage );
+            break;
+        }
+    }
+}
+
+function displayResetTable( strCardType )
+{
+	strHTML = "<table>";
+
+	var strDesc = "Reset card";
+
+	strHTML += "<tr><td>Reset Card</td>";
+	strHTML += "<td id='btn0'>&nbsp;&nbsp;";
+	strHTML += "<img align=\"absmiddle\" name=\"reset0\" src=\"./Up-Reset.jpg\" ";
+	strHTML += " onmousedown=\"clickIt( this, 'Down-Reset.jpg', 1 );\" ";
+	strHTML += " onMouseOut=\" clickIt( this, 'Up-Reset.jpg', 0 );\" ";
+	strHTML += " onMouseUp=\"if (this.bPressed==1) {clickIt( this, 'Up-Reset.jpg', 0 ); reset('" + 0 + "'); }\" ";
+	strHTML += " onMouseOver=\"style.cursor='hand'\" /> ";
+	strHTML += "</td></tr>";
+	
+    for (var i=1; i<=4; i++)
+    {
+		strDesc = "Reset module <b>" + i + "</b>";
+		
+		strHTML += "<tr>";
+		strHTML += "<td bgcolor='#e1e1e1'>" + strDesc + "</td>";
+		
+		strHTML += "<td id='btn" + i + "'>&nbsp;&nbsp;";
+		strHTML += "<img align=\"absmiddle\" name=\"reset" + i + "\" src=\"./Up-Reset.jpg\" ";
+		strHTML += " onmousedown=\"clickIt( this, 'Down-Reset.jpg', 1 );\" ";
+		strHTML += " onMouseOut=\" clickIt( this, 'Up-Reset.jpg', 0 );\" ";
+		strHTML += " onMouseUp=\"if (this.bPressed==1) {clickIt( this, 'Up-Reset.jpg', 0 ); reset('" + i + "'); }\" ";
+		strHTML += " onMouseOver=\"style.cursor='hand'\" /> ";
+		strHTML += "</td>";
+			
+		strHTML += "</tr>";
+	}
+    
+    strHTML += "</table><br>";
+
+	document.getElementById( "DIV_CellReset" ).innerHTML = strHTML;
+}
+
+function reset( nSel )
+{
+	var strCommand = ".SoftwareReset /A";
+	strCommand += G_strLastSelectedCard + "/I" + G_strID;
+ 
+	var strStatus = "Reset sent to card.";
+	if ( nSel != 0 )
+	{
+		strStatus = "Reset sent to module.";
+		strCommand += "/G" + nSel;
+	}
+
+	parent.frames[0].SendCommand( strCommand );
+	document.getElementById("DIV_Status").innerHTML = strStatus;
+	var strBtnID = "btn" + nSel;
+	document.getElementById(strBtnID).innerHTML = "<b><font color='brown'>Reset sent.</font><b>";
+}
+
+rnd.today=new Date();
+rnd.seed=rnd.today.getTime();
+
+function rnd()
+{
+        rnd.seed = (rnd.seed*9301+49297) % 233280;
+        return rnd.seed/(233280.0);
+};
+
+function rand(number)
+{
+        return Math.ceil(rnd()*number);
+};
+
+function clickIt( obj, strFile, bPressed )
+{
+	//alert( obj.name );
+    obj.bPressed = bPressed;
+	var str = 'document.all.' + obj.name + '.src = G_arBtnArray["' + strFile + '"].src';
+    eval( str );
+}
+</SCRIPT>
+
+<BODY onLoad="init()" bgcolor="white" onselectstart="return false;" ondragstart="return false;">
+<font size=4 face="Arial">Cellular Card Reset</font>
+<hr>
+
+<font face=Arial size=2>
+<div id="selectcard"></div>
+
+<div id="update_settings"></div>
+<br>
+
+<div id="DIV_CellReset">
+</div>
+
+<br>
+<div id="DIV_Status">
+</div>
+
+</font>
+
+</BODY>
+</HTML>

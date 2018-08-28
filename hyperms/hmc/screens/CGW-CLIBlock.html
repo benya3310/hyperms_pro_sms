@@ -1,0 +1,396 @@
+<HTML>
+<HEAD><TITLE>Cellular Gateways - SIM Locks</TITLE></HEAD>
+<STYLE type=text/css>TABLE {
+	BORDER-RIGHT: #000000 1px solid; BORDER-TOP: #000000 1px solid; BORDER-LEFT: #000000 1px solid; BORDER-BOTTOM: #000000 1px solid; border-spacing: 0px; cell-spacing: 0px
+}
+TD {
+	PADDING-RIGHT: 0.5em; PADDING-LEFT: 0.5em; FONT-SIZE: 10pt; PADDING-BOTTOM: 2px; PADDING-TOP: 2px; FONT-FAMILY: Arial, Helvetica, sans-serif; WHITE-SPACE: nowrap
+}
+</STYLE>
+<SCRIPT language=javascript src="../utils/utilfuncs.js"></SCRIPT>
+<SCRIPT language=javascript src="../utils/alloc_logic.js"></SCRIPT>
+<SCRIPT>
+var G_arAddresses	   = new Array();
+var G_arTypes		   = new Array();
+var G_nSelectedMethod        = 0;
+var G_nCurrent				 = 0;
+var G_nCG4MonitorTimerID	 = 0;
+// Received command from applet
+/**********************************************************************************************/
+function init()
+/**********************************************************************************************/
+{
+    getGWConfig();
+}
+/**********************************************************************************************/
+function getGWConfig()
+/**********************************************************************************************/
+{
+    parent.frames[0].SendCommand( "GetGWConfig" );
+}
+
+var G_strLastSelectedCard;
+var G_strLastSelectedCardSupported;
+var G_nCLIBlockingTimerID;
+/**********************************************************************************************/
+function onSelectCard( strCard, strCardType )
+/**********************************************************************************************/
+{
+    var nSlot = G_configInfo.calcSlotNumber( strCard );
+    G_strLastSelectedCard = strCard;
+    document.getElementById("update_settings").innerHTML = getSelCardText( nSlot, strCardType );
+
+	document.getElementById("DIV_SaveConfig").innerHTML = "";
+	G_strLastSelectedCardSupported = 1;
+	if ( ( strCardType == "CT4.1" ) || ( strCardType == "CC4.2" ) )
+	{
+		var strHTML = "<table><tr><td>This feature is not supported by this (" + strCardType + ") card.</td></tr></table>";
+		document.getElementById("DIV_Values").innerHTML = strHTML;
+		G_strLastSelectedCardSupported = 0;
+		return;
+	}
+
+    getInfo( strCard );
+}
+/**********************************************************************************************/
+function showSave()
+/**********************************************************************************************/
+{
+    var strSave = utils_getButtonHTML( "saveValues()", "SaveSettings.jpg" );
+    document.getElementById("DIV_SaveConfig").innerHTML = strSave;
+}
+/**********************************************************************************************/
+function hideSave()
+/**********************************************************************************************/
+{
+    document.getElementById("DIV_SaveConfig").innerHTML = "";
+}
+/**********************************************************************************************/
+function saveValues()
+/**********************************************************************************************/
+{
+    var strCommand = "CellSetCLIBlocking /A";
+    strCommand += G_strLastSelectedCard;
+    strCommand += "/I23/G";
+	if ( G_nSelectedMethod == 0)
+	{
+		for (var i=0; i<4; i++)
+		{
+			var strID = "p" + i; 
+			if (document.getElementById(strID).checked)
+			{
+				strCommand += "1";
+			}
+			else
+			{
+				strCommand += "0";
+			}
+			
+			if (i != 3)
+			{
+				strCommand += ",";
+			}
+		}
+		var cbCLI = document.getElementById("cbCLI");
+		if ( cbCLI != null )
+			strCommand += "/i" + (( cbCLI.checked ) ? "1" : "0");
+	}
+	else
+	{
+		if ( G_nSelectedMethod == 1)
+		{
+			strCommand += getAllParams();
+		}
+		else
+		{
+			G_nCurrent = 0;
+			saveEntireValues(getAllParams());
+			return;
+		}
+	}
+    parent.frames[0].SendCommand( strCommand );
+
+    document.getElementById("DIV_SaveConfig").innerHTML = "Saving configuration...";
+}
+/**********************************************************************************************/
+function getAllParams()
+/**********************************************************************************************/
+{
+    var strCommand = "";
+	var strID = 'entireBlockYes';
+	if (document.getElementById(strID).checked)
+	{
+        strCommand += "1,1,1,1";    
+    }
+	else
+	{
+        strCommand += "0,0,0,0";
+	}
+	return strCommand;
+    
+}
+/**********************************************************************************************/
+function saveEntireValues(strParams)
+/**********************************************************************************************/
+{
+	if ( G_nCurrent == G_arAddresses.length)
+	{
+		
+		clearTimeout( G_nCG4MonitorTimerID );		
+		document.getElementById("DIV_SaveConfig").innerHTML = "Configuration Saved for all Cards (" + G_nCurrent + ") Successfully!";
+		return;
+	}    
+	 var strCommand = "CellSetCLIBlocking ";
+	strCommand += "/I" + (10 + G_nCurrent);
+	strCommand += "/A" + G_arAddresses[G_nCurrent];
+	strCommand += "/G" + strParams;
+	parent.frames[0].SendCommand( strCommand );
+	document.getElementById("DIV_SaveConfig").innerHTML = "Updating Card#" + (G_nCurrent+1);
+	G_nCurrent++;
+	G_nCG4MonitorTimerID = setTimeout("saveEntireValues('"+strParams+"')",1500);
+}
+/**********************************************************************************************/
+function OnData( strMessage )
+/**********************************************************************************************/
+{
+    var strCommand = new String( strMessage );
+    var strParam = strCommand.split( " " );
+    var strSection;
+    
+    var packStr = new PacketString( strParam[1] );
+    
+    switch ( strParam[0] )
+    {
+        case "GWConfigInfo":
+        {
+			var objSelect = G_configInfo.getSelectCardHTML( packStr, "CG4.0,CC4.0,CT4.1,CU4.1,CC4.2", "Select cellular card", "onSelectCard" );
+			var strHTML = objSelect.m_strHTML;
+			var strSelCard = objSelect.m_strSelCard;
+			var strSelCardType = objSelect.m_strSelCardType;
+			document.getElementById("selectcard").innerHTML = strHTML;
+			FillCardType( "CG4.0" );
+			FillCardType( "CC4.0" );
+			FillCardType( "CT4.1" );
+			FillCardType( "CU4.1" );
+			FillCardType( "CC4.2" );
+			
+			sortCardsAddresses();      
+           
+			if ( strSelCard != null )
+			{
+				onSelectCard( strSelCard, strSelCardType );
+			}
+			break;
+        }
+        
+        case "Ack":
+        {            
+			if ( G_nSelectedMethod != 2 )
+			{					
+				//move to single mode and show card's values
+				G_nSelectedMethod = 0;
+				document.getElementById("DIV_SaveConfig").innerHTML = "Configuration saved.";            
+				getInfo( G_strLastSelectedCard );
+				
+			}
+            break;
+        }
+        
+        case "GWError":
+        {
+            document.getElementById("DIV_SaveConfig").innerHTML = "Error saving configuration.";
+            break;
+        }
+
+        case "CellCLIBlocking":
+        {
+			
+            clearTimeout(G_nCLIBlockingTimerID);
+            var strInfo = packStr.getSection( "g" );
+            var arParams = strInfo.split( "," );
+			var strBlockCLI = packStr.getSection("i");						
+            displayTable( arParams, strBlockCLI); 
+        }
+        
+        default:
+        {
+            // Send this to TCPServer log file ? internal log file ?
+            //alert( "Got unknown message:" + strMessage );
+            break;
+        }
+    }
+}
+/**********************************************************************************************/
+function FillCardType( strType )
+/**********************************************************************************************/
+{
+	var arTypeAddr = G_configInfo.getCardTypeAddresses( strType );
+        
+	if ( typeof( arTypeAddr ) != 'undefined' )
+	{
+		for (var i=0; i<arTypeAddr.length; i++)
+		{
+			G_arTypes.push( strType );
+		}
+		G_arAddresses = G_arAddresses.concat( arTypeAddr );
+	}
+}
+/**********************************************************************************************/
+function sortCardsAddresses()
+/**********************************************************************************************/
+{
+	var nAddress = new Array();
+	for ( var i=0; i<G_arAddresses.length; i++ )
+	{
+		nAddress[i] = parseInt(G_arAddresses[i] , 16);
+	}
+	nAddress.sort();
+	for ( var i=0; i<nAddress.length; i++ )
+	{
+		G_arAddresses[i] = nAddress[i].toString(16);
+	}
+}
+/**********************************************************************************************/
+function onSelectedMethod( nMethod )
+/**********************************************************************************************/
+{
+	G_nSelectedMethod = nMethod;
+	hideSave();	
+	if ( G_strLastSelectedCardSupported === 0 )
+		return;
+	if ( nMethod != 0 )
+	{	
+		
+		displayEntireTable();		
+	} 
+	else
+	{		
+		getInfo( G_strLastSelectedCard );		
+	}	
+}
+/**********************************************************************************************/
+function showMethodTable( nChecked )
+/**********************************************************************************************/
+{
+	var checked = new Array;
+	for (var i=0; i<3; i++)
+	{
+		if ( nChecked == i )
+		{
+			checked[ i ] = "checked";
+		}
+		else
+		{
+			checked[ i ] = "";
+		}
+	}
+	strHTML = "<br><table width='400'>"; 
+	strHTML += "<tr bgcolor='#eeeeee'>";
+	strHTML += "<td><input type='radio' onClick='onSelectedMethod(0)' name='SetMethod' " + checked[0] + ">Module Settings</td>";
+	strHTML += "<td><input type='radio' onClick='onSelectedMethod(1)' name='SetMethod' " + checked[1] + ">Entire Card</td>";
+	strHTML += "<td><input type='radio' onClick='onSelectedMethod(2)' name='SetMethod' " + checked[2] + ">Entire System</td>";
+	strHTML += "</tr></table><br>";
+    document.getElementById("mode").innerHTML = strHTML;
+	
+}
+/**********************************************************************************************/
+function displayEntireTable()
+/**********************************************************************************************/
+{
+	
+
+    var strHTML = "<table>";
+	strHTML += "<tr><td width=90>Select:</td>";
+
+	strHTML += "<td><input type='radio' id='entireBlockYes' name='entireBlock' ";
+	
+	strHTML += "onClick='showSave();'>Block enforced</td>";
+	
+	strHTML += "<td><input type='radio' name='entireBlock' ";
+	
+	strHTML += "onClick='showSave();'>Block not enforced";
+	strHTML += "</td></tr>";
+
+    strHTML += "</table>";
+    
+    document.getElementById("DIV_Values").innerHTML = strHTML;
+}
+/**********************************************************************************************/
+function displayTable( arParam, strBlockCLI )
+/**********************************************************************************************/
+{
+	showMethodTable(0);
+
+    var strHTML = "<table>";
+	/*
+    strHTML += "<tr><td>Card:</td>";
+    strHTML += "<td align='left'><a href='javascript:saveAll(1)'>Block</a></td></tr>";
+    strHTML += "<tr><td></td><td  align='right'><a href='javascript:saveAll(2)'>Unblock</a></td></tr>";
+    strHTML += "<table></br>";
+    strHTML += "<table>";
+	*/
+    //strHTML += "<tr><td>Per Module:</td></tr>";
+    
+    for (var i=0; i<arParam.length; i++)
+    {
+        strHTML += "<tr><td width=90>Module " + (i+1) + "</td>";
+
+        //////////
+        strHTML += "<td><input type=radio id='p" + i + "' name='R" + i + "' ";
+        if ( arParam[ i ] == "1" )
+        {
+            strHTML += "checked ";
+        }
+        strHTML += "onClick='showSave();'>Block enforced</td>";
+        
+        strHTML += "<td><input type=radio name='R" + i + "' ";
+        if ( arParam[ i ] == "0" )
+        {
+            strHTML += "checked ";
+        }
+        strHTML += "onClick='showSave();'>Block not enforced";
+        strHTML += "</td></tr>";
+		//////////
+    }
+	
+    if ( strBlockCLI != null )
+			strHTML += "<tr><td colspan=3>Additionally block CLI per call <input name='cbCLI' type=checkbox onclick='showSave();' "+((strBlockCLI=="1")?"CHECKED":"")+ "></td></tr>"
+        
+    strHTML += "</table>";
+    
+    document.getElementById("DIV_Values").innerHTML = strHTML;
+}
+/**********************************************************************************************/
+function getInfo( strAddress )
+/**********************************************************************************************/
+{
+    var strCommand = "CellGetCLIBlocking /A";
+    strCommand += strAddress;
+    strCommand += "/I27";
+    parent.frames[0].SendCommand( strCommand );
+    G_nCLIBlockingTimerID = setTimeout("getInfo('" + strAddress + "')",4000);
+}
+</SCRIPT>
+
+<BODY onLoad="init()" bgcolor="white" onselectstart="return false;" ondragstart="return false;">
+<font size=4 face="Arial">Cellular Card CLI Blocking</font>
+<hr>
+
+<font face=Arial size=2>
+<div id="selectcard"></div>
+
+<div id="update_settings"></div>
+<br>
+
+<div id="mode"></div>
+<div id="DIV_Values">
+</div>
+
+<br>
+<div id="DIV_SaveConfig">
+</div>
+
+</font>
+
+</BODY>
+</HTML>

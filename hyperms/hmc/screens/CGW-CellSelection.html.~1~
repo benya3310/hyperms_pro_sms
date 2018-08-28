@@ -1,0 +1,279 @@
+<HTML>
+<HEAD><TITLE>Cellular Gateways - Cell Selection</TITLE></HEAD>
+<link type="text/css" href="../default.css" rel="stylesheet">
+<SCRIPT language=javascript src="../utils/utilfuncs.js"></SCRIPT>
+<SCRIPT language=javascript src="../utils/alloc_logic.js"></SCRIPT>
+<SCRIPT language=javascript  src="../utils/UIUtils.js"></SCRIPT>
+<script src="../js/prototype.js" type="text/javascript"></script>
+<script src="../js/prototype.addon.js" type="text/javascript"></script>
+<script src="../js/CellularCards.CellSelect.js" type="text/javascript"></script>
+
+<SCRIPT>
+// Received command from applet
+function init()
+{
+    getGWConfig();
+}
+
+function getGWConfig()
+{
+    parent.frames[0].SendCommand( "GetGWConfig" );
+}
+
+var G_strLastSelectedCard;
+var G_nTimerID;
+var G_bTimer = true;
+
+var G_nTotalModules  = 4;
+
+//current selected module
+var G_nCurrentModuleNum = 1;
+//current set module (by set all func)
+var G_nCurrSetModule;
+var G_nCurrSetBCCH;
+var G_nCurrSetUARFCN;
+var G_nCurrSetPSC;
+
+var G_nCampByBCCH;
+
+var G_CellProcessor;
+//this array holds the td ids for spreading the cellucells in the table in star shape
+var G_arIDs = ['12','21','23','41','43','52'];
+var G_i = 0;
+function onSelectCard( strCard, strCardType )
+{
+    var nSlot = G_configInfo.calcSlotNumber( strCard );
+    G_strLastSelectedCard = strCard;
+	cleanDivs();
+
+    //document.getElementById("update_settings").innerHTML = getSelCardText( nSlot, strCardType );
+	showModuleMenu( getSelCardText( nSlot, strCardType ) );
+	clearTimeout( G_nTimerID );
+	getSelectedModule();
+}
+
+function showModuleMenu(strSelectedCard)
+{
+	var strHTML = "<table id='tbSelModule' class='TableCell'><tr><td colspan=2 class='TableNoBorder'>"+strSelectedCard+"</td></tr>"
+	strHTML    += "<tr><td class='TableNoBorder'>Select module </td>";
+	strHTML    += "<td class=''>" + ModuleComboRenderer("cbModule","ComboBox", G_nCurrentModuleNum) + "</td></tr></table>";
+	document.getElementById("moduleMenu").innerHTML = strHTML ;
+}
+
+function OnData( strMessage )
+{   alert( strMessage);
+    var strCommand = new String( strMessage );
+    var strParam = strCommand.split( " " );
+    var strSection;
+    var packStr = new PacketString( strParam[1] );
+
+    switch ( strParam[0] )
+    {
+        case "GWConfigInfo":
+        {
+			var objSelect = G_configInfo.getSelectCardHTML( packStr, "CG4.0,CU4.1", "Select cellular card", "onSelectCard" );
+            var strHTML = objSelect.m_strHTML;
+			var strSelCard = objSelect.m_strSelCard;
+			var strSelCardType = objSelect.m_strSelCardType;
+            document.getElementById("selectcard").innerHTML = strHTML;
+            if ( strSelCard != null )
+            {
+                onSelectCard( strSelCard, strSelCardType );
+            }
+            break;
+        }
+
+        case "Ack":
+        {
+			if ( packStr.getSection("I") == 7)
+			{
+            	Message("Camping parameters set.","BlueAlert");
+				clearTimeout( G_nTimerID );
+				getSelectedModule();
+			}
+			if ( packStr.getSection("I") == 8)
+			{
+            	Message("Module " + (G_nCurrSetModule++) + " - Camping parameters set.","BlueAlert");
+				setNextModule();
+			}
+            break;
+        }
+
+        case "GWError":
+        {
+			if (packStr.getSection("I") != "7" )
+			{
+				Message("This feature is not supported by this card.","BlueAlert");
+				clearTimeout( G_nTimerID );
+			}
+			else
+			{
+				Message("Error setting camping parameters !","RedAlert")
+			}
+			document.getElementById('cellsArea').innerHTML = "";
+        }
+        case "GenericReply":
+        {
+	        if ( packStr.getSection( "#" ) == "40" )
+	        {
+				processCellInfo( packStr );
+	        }
+	        break;
+        }
+        default:
+        {
+            break;
+        }
+    }
+}
+
+function processCellInfo( packStr )
+{
+	// remove dom children
+	//Element.update('cellsArea','');
+	cleanDivs();
+	drawTableGrid();
+	G_CellProcessor = new CellProcessor( packStr );
+	if ( G_CellProcessor.strStatus != "Not Valid")
+	{	G_i = 0;
+	    var cssClass = ( G_CellProcessor.currentCell.bIsCamped ) ? "cellInfoCamped" : "cellInfoSelected"
+		createCellInfoBox(G_CellProcessor.currentCell, cssClass, '32');
+		G_CellProcessor.CellularCells.each( function(item, index){
+			createCellInfoBox( item, '', G_arIDs[G_i++].toString() );
+		} );
+
+		$('Cancel').innerHTML  = G_CellProcessor.getCancelCampBtn()
+		$('Cancel').innerHTML += G_CellProcessor.getCampThemALLBtn();
+		$('Cancel').innerHTML += G_CellProcessor.getCancelALLBtn();
+
+		Message("");
+
+	}
+	else
+	{
+		//if ( G_CellProcessor.strLockedOnBCCH != "0")
+		$('Cancel').innerHTML = G_CellProcessor.getCancelCampBtn();
+		//G_bTimer = false;
+		Message("Network information unavailable.","RedAlert");
+	}
+}
+
+function createCellInfoBox(cell, ClassName, tdID){
+	var newDiv = $New ('div', 'cell_' + cell.strCellID, 'cellInfo', 'non' , non,false);
+	if (ClassName){
+		//var strCurrentClassName = ClassName.split(/\(/g)[0].replace('.','_');
+		newDiv.addClassName(ClassName);
+	}
+	newDiv.innerHTML = cell.innerHTML();
+	$(tdID).appendChild(newDiv);
+}
+
+function non(evt){}
+
+function Message( strMsg, cssClass )
+{
+	if ( strMsg!= "")
+		document.getElementById("update_settings").innerHTML = "<span class='"+cssClass+"'>"+strMsg+"</span>";
+	else
+		document.getElementById("update_settings").innerHTML = "";
+}
+
+function drawTableGrid()
+{
+	var strTable="<table class='TableNoBorder' valign='middle'>"
+	for (var i=1;i<6;i++)
+	{
+		strTable += "<tr>";
+		strTable += "<td align='left' id='" + i + "1'></td>";
+		strTable += "<td align='left' id='" + i + "2'></td>";
+		strTable += "<td align='left' id='" + i + "3'></td>";
+		strTable += "</tr>";
+	}
+	strTable += "</table>";
+	document.getElementById("cellsArea").innerHTML= strTable;
+}
+
+function setCurrentCell( nCampByBCCH, strBCCH, strUARFCN, strPSC )
+{
+	var strCommand = "SendGenericPacket 40:/A" + G_strLastSelectedCard;
+    strCommand    += "/I7/r" + G_nCurrentModuleNum + "/G";
+	strCommand    += strBCCH;
+	if ( nCampByBCCH != 1 ) strCommand += ( "," + strUARFCN + "," + strPSC );
+	parent.frames[0].SendCommand( strCommand );
+}
+
+function setAllCell( nCampByBCCH, strBCCH, strUARFCN, strPSC )
+{
+	G_nCurrSetModule = 1;
+	G_nCampByBCCH    = nCampByBCCH;
+	G_nCurrSetBCCH   = strBCCH;
+	G_nCurrSetUARFCN = strUARFCN;
+	G_nCurrSetPSC    = strPSC;
+	setNextModule();
+}
+
+function setNextModule()
+{
+	if ( G_nCurrSetModule <= G_nTotalModules )
+	{
+		var strCommand = "SendGenericPacket 40:/A" + G_strLastSelectedCard;
+    	strCommand    += "/I8/r" + G_nCurrSetModule + "/G";
+		strCommand    += G_nCurrSetBCCH;
+		if ( G_nCampByBCCH != 1 ) strCommand += ( "," + G_nCurrSetUARFCN + "," + G_nCurrSetPSC );
+		parent.frames[0].SendCommand( strCommand );
+	}
+	else if ( G_nCampByBCCH )
+	{
+		if ( G_nCurrSetBCCH == "0" )
+			Message("Successfully cancelled camping for all modules.","BlueAlert");
+		else
+			Message("Camping all modules on BCCH " + G_nCurrSetBCCH + " succeeded.","BlueAlert");
+	}
+	else
+	{
+		if ( G_nCurrSetUARFCN == "0" )
+			Message("Successfully cancelled camping for all modules.","BlueAlert");
+		else
+			Message("Camping all modules on UARFCN " + G_nCurrSetUARFCN + " & PSC " + G_nCurrSetPSC + " succeeded.","BlueAlert");
+	}
+}
+
+function getSelectedModule()
+{
+	clearTimeout( G_nTimerID );
+	var objSelect = document.getElementById("cbModule");
+	try{
+	G_nCurrentModuleNum = objSelect.options[ objSelect.selectedIndex ].text;
+	}
+	catch (e){ G_nCurrentModuleNum = 1; }
+	G_CellProcessor = null;
+	getCurrentModule();
+}
+
+function getCurrentModule()
+{
+    var strCommand = "SendGenericPacket 40:/A" + G_strLastSelectedCard;
+    strCommand    += "/I770/r" + G_nCurrentModuleNum + "/Q";
+	parent.frames[0].SendCommand( strCommand );
+	G_nTimerID = setTimeout(getCurrentModule,7000);
+}
+
+function cleanDivs()
+{
+	$('update_settings').innerHTML = '';
+	$('Cancel').innerHTML = '';
+}
+
+</SCRIPT>
+
+<BODY onLoad="init()" bgcolor="white" ondragstart="return false;">
+<font size=4 face="Arial">Cellular Cell Selection</font>
+<hr>
+<div id="selectcard"></div>
+<div id="moduleMenu" style='padding-bottom: 5pt;'></div>
+<div id="Cancel" style='padding-bottom: 3pt;'></div>
+<div id="update_settings"></div>
+<div id="cellsArea" style='padding-left: 60pt;'>
+</div>
+</BODY>
+</HTML>

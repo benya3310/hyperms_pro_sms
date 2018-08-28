@@ -1,0 +1,251 @@
+<HTML>
+<HEAD><TITLE>Cellular Cards - Virtual SIMs Information</TITLE></HEAD>
+<STYLE type=text/css>TABLE {
+	BORDER-RIGHT: #000000 1px solid; BORDER-TOP: #000000 1px solid; BORDER-LEFT: #000000 1px solid; BORDER-BOTTOM: #000000 1px solid; border-spacing: 0px; cell-spacing: 0px
+}
+TD {
+	PADDING-RIGHT: 0.5em; PADDING-LEFT: 0.5em; FONT-SIZE: 10pt; PADDING-BOTTOM: 2px; PADDING-TOP: 2px; FONT-FAMILY: Arial, Helvetica, sans-serif; WHITE-SPACE: nowrap
+}
+</STYLE>
+<SCRIPT language=javascript src="../utils/utilfuncs.js"></SCRIPT>
+<SCRIPT language=javascript src="../utils/alloc_logic.js"></SCRIPT>
+<SCRIPT>
+
+var G_arVsimPath;
+var G_arTCPport;
+var G_arPhysSim;
+var G_arICCID;
+var G_strAddress;
+var G_arModule;
+var G_arSHUBaddr;
+var G_nSimInfoTimerID;
+var G_arShowTCPport;
+
+var G_ErrorMsgs = new Array();
+
+G_ErrorMsgs[ "CARD_NOT_SUPPORTED" ] = "This feature is only available on cards linked to a Smart SIM Rack.";
+G_ErrorMsgs[ "CARD_NOT_DEFINED"   ] = "Card not defined on S-HUB configuration.";
+G_ErrorMsgs[ "NO_CARD_REPLY"      ] = "No reply from card.";
+G_ErrorMsgs[ "NO_S_HUB_REPLY"     ] = "No reply from S-HUB card.";
+
+// Received command from applet
+function init()
+{
+    getGWConfig();
+}
+
+function getGWConfig()
+{
+    parent.frames[0].SendCommand( "GetGWConfig" );
+}
+
+function onSelectCard( strCard, strType )
+{
+    var nSlot = G_configInfo.calcSlotNumber( strCard );
+	G_strAddress    = strCard.toUpperCase();
+	G_arVsimPath    = new Array();
+	G_arTCPport     = new Array()
+	G_arPhysSim     = new Array()
+	G_arICCID       = new Array()
+	G_arSHUBaddr    = new Array()
+	G_arModule      = 1;
+	G_arShowTCPport = 0;
+    getInfo( strCard );
+    document.getElementById("update_settings").innerHTML = getSelCardText( nSlot, strType );
+	document.getElementById("DIV_VsimInfo").innerHTML = "";
+}
+
+function OnData( strMessage )
+{
+    var strCommand = new String( strMessage );
+    var strParam = strCommand.split( " " );
+    var strSection;
+    
+    var packStr = new PacketString( strParam[1] );
+    
+    switch ( strParam[0] )
+    {
+        case "GWConfigInfo":
+        {
+			var objSelect = G_configInfo.getSelectCardHTML( packStr, "CG4.0", "Select cellular card", "onSelectCard" );
+            var strHTML = objSelect.m_strHTML;
+			var strSelCard = objSelect.m_strSelCard;
+            document.getElementById("selectcard").innerHTML = strHTML;
+			var strSelCardType = objSelect.m_strSelCardType;
+            if ( strSelCard != null )
+            {
+                onSelectCard( strSelCard, strSelCardType );
+            }
+            break;
+        }
+
+        case "GWError":
+        {
+			var strSrcAddr = packStr.getSection( "A" ).toUpperCase();
+			if ( strSrcAddr == G_strAddress )
+		 	{
+				clearTimeout(G_nSimInfoTimerID);
+				displayErrorMsg( "CARD_NOT_SUPPORTED" );
+			}
+			else if ( ( G_arSHUBaddr[ 0 ] != null ) && ( strSrcAddr == G_arSHUBaddr[ 0 ] ) )
+			{
+				clearTimeout(G_nSimInfoTimerID);
+				displayErrorMsg( "CARD_NOT_DEFINED" );
+			}
+			break;
+		}
+
+		case "GenericReply":
+        {
+			if ( strParam[1].indexOf( "/#48" ) > -1 )
+            {
+				clearTimeout(G_nSimInfoTimerID);
+				var strSrcAddr = packStr.getSection( "@" ).toUpperCase();
+				if ( ( strSrcAddr == G_strAddress ) && ( packStr.getSection( "I" ) == 285 ) )
+				{
+					G_arModule 		= 1;
+					G_arShowTCPport = 0;
+					var strInfo = packStr.getSection( "i" ).toUpperCase();
+					if ( strInfo != null )
+					{
+						G_arSHUBaddr = strInfo.split( "." );
+						getModuleInfo( G_strAddress, G_arModule );
+					}
+				}
+			}
+			else if ( strParam[1].indexOf( "/#4b" ) > -1 )
+            {
+				clearTimeout(G_nSimInfoTimerID);
+				var strSrcAddr = packStr.getSection( "@" ).toUpperCase();
+				if ( ( G_arSHUBaddr[ 0 ] != null ) && ( strSrcAddr == G_arSHUBaddr[ 0 ] ) && ( packStr.getSection( "I" ) == ( "28" + G_arModule ) ) )
+				{
+					var strInfo = packStr.getSection( "q" ).toUpperCase();
+					if ( strInfo != null )
+					{
+						var arInfo = strInfo.split( "." );
+						if ( ( arInfo[ 0 ] == G_strAddress ) && ( G_arModule ) && ( G_arModule <= 4 ) )
+						{
+							G_arTCPport[ G_arModule ]  = packStr.getSection( "P" );
+							G_arVsimPath[ G_arModule ] = packStr.getSection( "N" ).replace( /"/g , "");
+							G_arPhysSim[ G_arModule ]  = packStr.getSection( "n" ).replace( /"/g , "");
+							G_arICCID[ G_arModule ]    = packStr.getSection( "i" ).replace( /"/g , "");
+
+							if ( G_arTCPport[ G_arModule ]  == "0" )
+							{
+								G_arTCPport[ G_arModule ] = "-";
+							}
+							else if ( ( G_arTCPport[ G_arModule ]  != null ) && ( G_arTCPport[ G_arModule ]  != "" ) )
+							{
+								G_arShowTCPport = 1;
+							}
+							
+							if ( G_arModule == 4 )
+							{
+								displayVsimInfoTable();
+							}
+							else
+							{
+								G_arModule ++;
+								getModuleInfo( G_strAddress, G_arModule );
+							}
+						}
+					}
+				}
+			}
+			break; 
+        }
+		
+        default:
+        {
+            break;
+        }
+    }
+}
+
+function displayVsimInfoTable()
+{
+    var strHTML = "<table>";
+	strHTML += "<tr bgcolor='#f5f5b0'><td width=90>Module</td>"
+	strHTML += "<td>VSIM Path</td>"
+	if (G_arShowTCPport)
+	{
+		strHTML += "<td>TCP Port</td>"
+	}
+	strHTML += "<td>Physical SIM</td>";
+	strHTML += "<td>ICCID</td>";
+	strHTML += "</tr>";
+    for (var i=1; i<=4; i++)
+    {
+		if (i%2 == 1)
+		{
+			strBgColor = "#e0e0e0";
+		}
+		else
+		{
+			strBgColor = "#d0d0d0";
+		}
+		
+        strHTML += "<tr bgcolor='" + strBgColor + "'><td>Module " + i + "</td>";
+        strHTML += "<td>" + G_arVsimPath[ i ] + "</td>";
+        if (G_arShowTCPport)
+		{
+			strHTML += "<td>" + G_arTCPport[ i ] + "</td>";
+		}
+        strHTML += "<td>" + G_arPhysSim[ i ] + "</td>";
+        strHTML += "<td>" + G_arICCID[ i ] + "</td>";
+		strHTML += "</tr>";
+    }
+    strHTML += "</table>";
+    document.getElementById("DIV_VsimInfo").innerHTML = strHTML;
+}
+
+function getInfo( strAddress )
+{
+	clearTimeout(G_nSimInfoTimerID);
+    var strCommand = "SendGenericPacket 48:/A";
+    strCommand += strAddress;
+    strCommand += "/I285/r0/Q";
+    parent.frames[0].SendCommand( strCommand );
+    G_nSimInfoTimerID = setTimeout("displayErrorMsg( \"NO_CARD_REPLY\" )",4000);
+}
+
+function getModuleInfo( strAddress, arModule )
+{
+	clearTimeout(G_nSimInfoTimerID);
+	var strCommand = "SendGenericPacket 4b:/A";
+	strCommand += G_arSHUBaddr[ 0 ];
+	strCommand += "/I28" + arModule + "/x";
+	strCommand += G_arSHUBaddr[ 1 ];
+	strCommand += "/Q" + strAddress + '.' + arModule;
+	parent.frames[0].SendCommand( strCommand );
+    G_nSimInfoTimerID = setTimeout("displayErrorMsg( \"NO_S_HUB_REPLY\" )",4000);
+}
+
+/**********************************************************************************************/
+function displayErrorMsg( strError )
+/**********************************************************************************************/
+{
+	var strHTML = "<table><tr><td>" + G_ErrorMsgs[ strError ] + "</td></tr></table>";
+	document.getElementById("DIV_VsimInfo").innerHTML = strHTML;
+}
+
+</SCRIPT>
+
+<BODY onLoad="init()" bgcolor="white" onselectstart="return false;">
+<font size=4 face="Arial">Cellular Cards Virtual SIMs Information</font>
+<hr>
+
+<font face=Arial size=2>
+
+<div id="selectcard"></div>
+
+<div id="update_settings"></div>
+<br>
+
+<div id="DIV_VsimInfo">
+</div>
+
+</font>
+
+</BODY>
+</HTML>

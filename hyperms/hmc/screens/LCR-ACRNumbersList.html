@@ -1,0 +1,59 @@
+<html>
+<head>
+<script src="../js/utilfuncs.js" type="text/javascript"></script>
+<script src="../js/alloc_logic.js" type="text/javascript"></script>
+</head>
+<SCRIPT>
+// Received command from applet
+//SendGenericPacket 30:/x1,0/ALCR/I777/Q1
+//GenericReply /#30/@2b/x0,1/I777/i"PRI-PBX","PRI-Bezeq","VoIP1","VoIP2","VoIP","PRI-4th","GSM","","","PRI-Ast","","","","","",""
+
+var G_strGroups = "";
+function init()
+{
+	document.getElementById("divUI").innerHTML = "Please wait...";
+	parent.frames[0].SendCommand( "GetGWConfig" );
+   // parent.frames[0].SendCommand( "SendGenericPacket 30:/x1,0/ALCR/I770/Q1" );
+}
+function goToPHP()
+{
+	var strServerName	= parent.frames[0].getServerIP();
+	var strPassword		= parent.frames[0].getPassword();	
+	var strLoc = "http://" + strServerName + "/cb/whitelist/uploadNumbersList.php?password=" + strPassword + "&IP=" + strServerName;
+
+    document.location.href = strLoc;
+}
+function OnData(strMessage)
+	{        
+    //alert ( strMessage );
+	    var strCommand = new String( strMessage );
+	    var arParam = strCommand.split( " " );
+	
+		if ( arParam.length < 1 )
+		{
+		return;
+		}
+		if (arParam[0] == "GWConfigInfo")
+		{
+			var packStr = new PacketString( arParam[ 1 ] );
+			if ( packStr.getSection( "c" ).indexOf("LCR") == -1 )
+			{
+				document.getElementById("divUI").innerHTML = "No LCR was found.";
+			}
+			else
+			{
+				goToPHP();
+			}
+			
+		}
+				
+	
+		
+	    
+	}
+</script>
+<body onLoad="init();">
+<div id="divUI"></div>
+
+</body>
+</html>

@@ -1,0 +1,574 @@
+<HTML>
+<head>
+<link type="text/css" href="../default.css" rel="stylesheet">
+<STYLE type="text/css">
+.skin0 {
+position:absolute;
+text-align:left;
+width:200px;
+border:2px solid black;
+background-color:menu;
+font-family:Verdana;
+line-height:20px;
+cursor:default;
+visibility:hidden;
+}
+
+.skin1 {
+cursor:default;
+font:menutext;
+position:absolute;
+text-align:left;
+font-family: Arial, Helvetica, sans-serif;
+font-size: 10pt;
+width:120px;
+background-color:menu;
+border:1 solid buttonface;
+visibility:hidden;
+border:2 outset buttonhighlight;
+}
+
+.menuitems {
+padding-left:15px;
+padding-right:10px;
+}
+</STYLE>
+<SCRIPT language=javascript src="../utils/utilfuncs.js"></SCRIPT>
+<SCRIPT language=javascript src="../utils/alloc_logic.js"></SCRIPT>
+</head>
+
+<SCRIPT>
+var g_strCurrentCard = "";	
+var g_nTotalPorts = 4;
+var g_nChannelsPerPort = 2;
+var g_oStatus	= new Array();
+var g_oFromNum	= new Array();
+var g_oToNum	= new Array();
+var g_oPStatus1 = new Array();
+var g_oPStatus2 = new Array();
+var g_oPSyncStat;
+var g_oPBypassStat;
+var g_BRIChannelStatusMap = new Array();
+var g_BRIcardTimeslots = new Array();
+
+g_BRIChannelStatusMap[ "00" ] = "Idle";
+g_BRIChannelStatusMap[ "01" ] = "Incoming call from BRI";
+g_BRIChannelStatusMap[ "02" ] = "Remote side ringing";
+g_BRIChannelStatusMap[ "03" ] = "Call connected";
+g_BRIChannelStatusMap[ "04" ] = "Call cleared";
+g_BRIChannelStatusMap[ "05" ] = "Waiting for digits from BRI";
+g_BRIChannelStatusMap[ "11" ] = "Dialing out through BRI";
+
+var g_arBRIstatusMap = new Array();
+g_arBRIstatusMap[ "0" ] = "DOWN";
+g_arBRIstatusMap[ "1" ] = "UP";
+
+var g_arBRIbypassMap = new Array();
+g_arBRIbypassMap[ "00" ] = "NORMAL";
+g_arBRIbypassMap[ "01" ] = "<font color='red'>BYPASS</font> &nbsp&nbsp(by software)";
+g_arBRIbypassMap[ "10" ] = "<font color='red'>BYPASS</font> &nbsp&nbsp(by switch)";
+g_arBRIbypassMap[ "11" ] = "<font color='red'>BYPASS</font> &nbsp&nbsp(by switch and software)";
+
+var menuskin = "skin1"; // skin0, or skin1
+var g_nLastX = 0;
+var g_nLastY = 0;
+var g_nLastSelChannel = 0;
+var g_objSelRow = null;
+
+function showmenuie5()
+{
+    var obj = document.elementFromPoint( event.clientX, event.clientY );
+    if (typeof (obj.channel) == 'undefined' )
+    {
+        return false;
+    }
+
+    if ( g_objSelRow != null )
+    {
+        g_objSelRow.style.backgroundColor="#F7F7F7";
+    }
+    
+    g_objSelRow = document.getElementById( "c" + obj.channel );
+    
+    g_nLastX = event.clientX;
+    g_nLastY = event.clientY;
+
+    document.getElementById( "c" + obj.channel ).style.backgroundColor="#FFDB75";
+    g_nLastSelChannel = obj.channel;
+
+    var rightedge = document.body.clientWidth-event.clientX;
+    var bottomedge = document.body.clientHeight-event.clientY;
+    if (rightedge < ie5menu.offsetWidth)
+    {
+        ie5menu.style.left = document.body.scrollLeft + event.clientX - ie5menu.offsetWidth;
+    }
+    else
+    {
+        ie5menu.style.left = document.body.scrollLeft + event.clientX;
+    }
+    
+    if (bottomedge < ie5menu.offsetHeight)
+    {
+        ie5menu.style.top = document.body.scrollTop + event.clientY - ie5menu.offsetHeight;
+    }
+    else
+    {
+        ie5menu.style.top = document.body.scrollTop + event.clientY;
+    }
+    ie5menu.style.visibility = "visible";
+    return false;
+}
+
+function hidemenuie5()
+{
+    ie5menu.style.visibility = "hidden";
+    var obj = document.elementFromPoint( g_nLastX, g_nLastY );
+    if (typeof (obj.channel) != 'undefined' )
+    {
+        document.getElementById( "c" + obj.channel ).style.backgroundColor="#F7F7F7";
+    }
+}
+
+function highlightie5()
+{
+    if (event.srcElement.className == "menuitems")
+    {
+        event.srcElement.style.backgroundColor = "highlight";
+        event.srcElement.style.color = "white";
+    }
+}
+
+function lowlightie5()
+{
+    if (event.srcElement.className == "menuitems")
+    {
+        event.srcElement.style.backgroundColor = "";
+        event.srcElement.style.color = "black";
+        window.status = "";
+    }
+}
+
+function jumptoie5()
+{
+    if (event.srcElement.className == "menuitems")
+    {
+        if (event.srcElement.getAttribute("target") != null)
+        {
+            window.open(event.srcElement.url, event.srcElement.getAttribute("target"));
+        }
+        else
+        {
+            window.location = event.srcElement.url;
+        }
+    }
+}
+
+function init()
+{
+	var strHTML = "";
+	var i;
+	
+	for (var port=0 ; port<g_nTotalPorts ; port++)
+	{
+		strHTML += '<table border="0" bgcolor="#FFFFAC">';
+		strHTML += '<tr><td align="left" height="25" width="68">';
+		strHTML += '<b>Port ' + (port+1) +'</b>';
+		strHTML += '</td>';
+		strHTML += '<td align="left">Layer 1</td><td width="132" align="left" id="DIV_BRIStatus1_' + (port+1) + '"></td>';
+		strHTML += '<td></td>';
+		strHTML += '<td align="left">Layer 2</td><td width="204" align="left" id="DIV_BRIStatus2_' + (port+1) + '"></td>';
+		strHTML += '</tr>';
+		strHTML += '</table>';
+		strHTML += '<table class="headerScollable" border="0" cellspacing="0" >';
+		strHTML += '<thead>';
+		strHTML += '<tr>';
+		strHTML += '<td align="left" width="10%">Channel</td>';
+		strHTML += '<td align="left" width="40%">Status</td>';
+		strHTML += '<td align="left" width="25%">Source</td>';
+		strHTML += '<td align="left" width="25%">Destination</td>';
+		strHTML += '</tr>';
+		strHTML += '</thead>';
+		strHTML += '<tbody class="scrollContent">';
+	
+		for (var ch=0 ; ch<g_nChannelsPerPort ; ch++)
+		{
+			i = ((port * g_nChannelsPerPort) + ch);
+            strHTML += "<tr id='c" + i + "'>";
+			strHTML += "<td align='right' channel='" + i + "'><b>Port " + (port+1) + " Ch " + (ch+1) + "</b></td>";
+            strHTML += "<td align='left'  channel='" + i + "' id='ChannelStat" + i + "'>-</td>";
+            strHTML += "<td align='left'  channel='" + i + "' id='idFrom" + i + "'>-</td>";
+            strHTML += "<td align='left'  channel='" + i + "' id='idTo" + i + "'>-</td></tr>";
+		}
+		strHTML += '</tbody></table>';
+	}
+
+	strHTML += '<table border="0" bgcolor="#FFFFE8">';
+	strHTML += '<tr><td align="left" height="20" width="138">';
+	strHTML += '<b>Sync Port</b>';
+	strHTML += '</td>';
+	strHTML += '<td width="460" align="left" id="DIV_BRISyncStat"></td>';
+	strHTML += '</tr>';
+	strHTML += '</table>';
+
+	strHTML += '<table border="0" bgcolor="#FFFFE8">';
+	strHTML += '<tr><td align="left" height="20" width="138">';
+	strHTML += '<b>Bypass status</b>';
+	strHTML += '</td>';
+	strHTML += '<td width="460" align="left" id="DIV_BRIBypassStat"></td>';
+	strHTML += '</tr>';
+	strHTML += '</table>';
+
+	document.getElementById("DIV_Status").innerHTML = strHTML;    
+
+	for (var port=0 ; port<g_nTotalPorts ; port++)
+	{
+		g_oPStatus1[port] = document.getElementById( "DIV_BRIStatus1_" + (port+1) );
+		g_oPStatus2[port] = document.getElementById( "DIV_BRIStatus2_" + (port+1) );
+		for (var ch=0; ch<g_nChannelsPerPort; ch++)
+		{
+			var strStatus  = "ChannelStat" + ((port * g_nChannelsPerPort) + ch);
+			var strFromNum = "idFrom" + ((port * g_nChannelsPerPort) + ch);
+			var strToNum   = "idTo" + ((port * g_nChannelsPerPort) + ch);
+			g_oStatus[  (port * g_nChannelsPerPort) + ch ] = document.getElementById( strStatus );
+			g_oFromNum[ (port * g_nChannelsPerPort) + ch ] = document.getElementById( strFromNum );
+			g_oToNum[   (port * g_nChannelsPerPort) + ch ] = document.getElementById( strToNum );
+		}
+	}
+	g_oPSyncStat   = document.getElementById("DIV_BRISyncStat");
+	g_oPBypassStat = document.getElementById("DIV_BRIBypassStat");
+}
+
+function statusColor( strText, strGreenCode, strStatusCode )
+{
+	var strStatusText	= "<b><font color='"
+	if ( strStatusCode == strGreenCode )
+	{
+		strStatusText += "green";
+	}
+	else
+	{
+		strStatusText += "red";
+	}
+	strStatusText += "'>" + strText + "</font></b>";
+	return strStatusText;
+}
+
+function OnData( strMessage )
+{	
+    var strCommand = new String( strMessage );
+    var strParam = strCommand.split( " " );
+    var strSection;
+    
+    var packStr = new PacketString( strParam[1] );
+    
+    switch ( strParam[0] )
+    {
+        case "Status":
+        {
+			var strBRIallStatus1   = new String( packStr.getSection( "P" ) );
+			var strBRIStatus1      = strBRIallStatus1.split( "," );
+
+			var strBRIallStatus2   = new String( packStr.getSection( "T" ) );
+			var strBRIStatus2      = strBRIallStatus2.split( "," );
+
+			for (var port=0 ; port<g_nTotalPorts ; port++)
+			{
+				g_oPStatus1[port].innerHTML = statusColor( g_arBRIstatusMap[ strBRIStatus1[port] ], "1", strBRIStatus1[port] );
+				g_oPStatus2[port].innerHTML = statusColor( g_arBRIstatusMap[ strBRIStatus2[port] ], "1", strBRIStatus2[port] );
+            }
+
+			var strBRIallStatus3   = new String( packStr.getSection( "r" ) );
+			var strBRIStatus3      = strBRIallStatus3.split( "," );
+
+			g_oPSyncStat.innerHTML = "<b>" + g_arBRIstatusMap[ strBRIStatus3[2] ] + "</b>";
+
+			g_oPBypassStat.innerHTML = "<b>" + g_arBRIbypassMap[ strBRIStatus3[0] + strBRIStatus3[1] ] + "</b>";
+			
+            var strStatus   = new String( packStr.getSection( "g" ) );
+            var strStatus   = new String(strStatus);
+            var arStatus    = strStatus.split( "," );
+            var strResult   = "";
+
+			for (var i=0; i<arStatus.length; i++)
+            {
+                if ( arStatus[ i ] == "00" )
+                {
+					g_oFromNum[ i ].innerHTML	= "-";
+					g_oToNum[ i ].innerHTML		= "-";
+                }
+                
+				if ( g_oFromNum[ i ].innerHTML == "" )
+				{
+					g_oFromNum[ i ].innerHTML	= "-";
+				}
+				if ( g_oToNum[ i ].innerHTML == "" )
+				{
+					g_oToNum[ i ].innerHTML		= "-";
+				}
+				
+                g_oStatus[ i ].innerHTML = g_BRIChannelStatusMap[ arStatus[ i ] ];
+				g_oFromNum[ i ].style.visibility = "visible";
+				g_oToNum[ i ].style.visibility = "visible";
+            }
+            break;
+        }
+        
+        case "GWError":
+        {
+			var strErrorSessionID = new String( packStr.getSection( "I" ) );
+			if ( strErrorSessionID == "257" )
+			{
+				alert( "Failed initiating test call" );
+			}
+			else
+			{
+				alert( "Got error message" ); // :" + strMessage );
+			}
+            break;
+        }
+        
+        case "GWConfigInfo":
+        {
+			requestAppListen();  // We won't wait for a response from this
+			
+			var objSelect = G_configInfo.getSelectCardHTML( packStr, "QBRI", "Select BRI card", "onSelectCard" );
+			var strHTML = objSelect.m_strHTML;
+			var strSelCard = objSelect.m_strSelCard;
+			var strSelCardType = objSelect.m_strSelCardType;			
+			
+            document.getElementById("selectcard").innerHTML = strHTML;
+            if ( strSelCard != null )
+            {
+                init();
+				document.getElementById("DIV_Status").style.visibility = "visible";
+				g_strCurrentCard = strSelCard;
+                onSelectCard( strSelCard, strSelCardType );
+            }
+            else
+            {
+				document.getElementById("DIV_Status").style.visibility = "hidden";
+            }
+            break;
+        }
+
+        case "GenericReply":
+        {
+            if ( strParam[1].indexOf( "/#25" ) > -1 && strParam[1].indexOf( "/y2" ) > -1 )
+            {
+				var strAddr	= packStr.getSection( "@" );
+				if ( strAddr != g_strCurrentCard )
+				{
+					return;
+				}
+				
+                var strChannel = packStr.getSection( "r" );
+				var nChannel = parseInt( strChannel ) - 1;
+
+				var strFrom = packStr.getSection( "N" );
+				var strTo	= packStr.getSection( "n" );
+				
+				if ( strFrom == "" )
+				{
+					strFrom = "-";
+				}
+				
+				if ( strTo == "" )
+				{
+					strTo = "-";
+				}
+				
+				g_oFromNum[ nChannel ].style.visibility = "hidden";
+				g_oFromNum[ nChannel ].innerHTML = strFrom;
+				g_oToNum[ nChannel ].innerHTML = strTo;
+				g_oToNum[ nChannel ].style.visibility = "hidden";
+				break;
+			}
+		}
+		
+		case "CardTimeslotsInfo":
+		{
+			var strAddr	= packStr.getSection( "A" );
+			if ( strAddr == g_strCurrentCard )
+			{
+				var strBRItimeslots = new String( packStr.getSection( "g" ) );
+				g_BRIcardTimeslots  = strBRItimeslots.split( "," );
+			}
+			break;
+		}
+        
+        default:
+        {
+            break;
+        }
+    }
+}
+
+function getGWConfig()
+{
+    parent.frames[0].SendCommand( "GetGWConfig" );
+}
+
+function requestAppListen()
+{
+    parent.frames[0].SendCommand( "ListenToApplication /I281/G2" );
+}
+
+var g_str1or2;
+
+function onSelectCard( strCard, strCardType )
+{
+	if ( strCard == null )
+	{
+		return;
+	}
+	
+    if ( strCard != g_strCurrentCard )
+	{
+		clearGUI();
+		getGWConfig();
+		g_strCurrentCard = strCard;
+		return;
+	}
+
+	g_str1or2 = "2";
+	var nSlot = G_configInfo.calcSlotNumber( strCard );
+    getInfo( strCard )
+    document.getElementById("update_settings").innerHTML = getSelCardText( nSlot, strCardType );
+}
+
+var g_nBRIstatusTimerID = -1;
+
+function getInfo( strAddress )
+{
+	if ( g_nBRIstatusTimerID != -1 )
+	{
+		clearTimeout(g_nBRIstatusTimerID);
+	}
+	
+	var strCommand = "GetStatus /I239/Q" + g_str1or2 + "/A" + strAddress + "/x1,0";
+	//alert( strCommand );
+    parent.frames[0].SendCommand( strCommand );
+	
+	if ( g_str1or2 == "2" )
+	{
+		g_str1or2 = "1";
+
+		g_BRIcardTimeslots = new Array();
+		strCommand = "SendGenericPacket 76:/A" + strAddress + "/I240/x1";
+		parent.frames[0].SendCommand( strCommand );
+	}
+	
+    var strFunc = "getInfo('" + strAddress + "')";
+    //alert( strFunc );
+    g_nBRIstatusTimerID = setTimeout(strFunc,2000);
+}
+
+function clearGUI()
+{
+	document.getElementById("DIV_Status").innerHTML = "";
+}
+
+function ClearCall()
+{
+/*
+	if  ( !confirm( "Are you sure you want to disconnect this active call ?" ) )
+	{
+		return;
+	}
+*/
+	var nChannel = parseInt(g_nLastSelChannel) + 1;
+    var strCmd = "SendGenericPacket 81:/A" + g_strCurrentCard + "/I676/x1/r" + nChannel;
+    parent.frames[0].SendCommand( strCmd );
+}
+
+function TestCall()
+{
+	//check if timeslot is defined
+	if ( g_BRIcardTimeslots[ g_nLastSelChannel ] == null )
+	{
+		CloseTestCall();
+		return;
+	}
+	var strHTML = "<table border='0' width='550px' bgcolor='#E8E8E8'>";
+	strHTML += "<tr><td>Source <input type='text' id='txtSrcNum' onkeyup='return TestCallCheck()'></input></td>"
+	strHTML += "<td>Destination <input type='text' id='txtDestNum' onkeyup='return TestCallCheck()'></input></td>"
+	strHTML += "<td><input class='button' type='button' id='btnTestCall' value='Make Call' onclick='MakeTestCallTo();'></input></td></tr>";
+	strHTML += "<tr><td colspan=3 align='right'><a class='link' href='javascript:CloseTestCall()'>Cancel</a></td></tr>";
+	strHTML += "</table>";
+	
+	document.getElementById("testcalldiv").style.visibility = "visible";
+	document.getElementById("testcalldiv").innerHTML = strHTML;
+	document.getElementById("txtSrcNum").focus()
+	return;
+}
+
+function TestCallCheck()
+{
+	if (window.event && window.event.keyCode == 13)
+		MakeTestCallTo();
+	else
+	{
+		return true;
+	}
+}
+
+function MakeTestCallTo()
+{
+	var strSrcNum  = document.getElementById("txtSrcNum").value;
+	var strDestNum = document.getElementById("txtDestNum").value;
+		
+	if ( strDestNum != "" )
+	{
+		var strCommand = "SendGenericPacket 11:/A" + g_strCurrentCard + "/I257/x1/o0/L/s" + g_BRIcardTimeslots[ g_nLastSelChannel ];
+		if ( strSrcNum != "" )
+		{
+			strCommand += "/N" + strSrcNum;
+		}
+		strCommand += "/n" + strDestNum
+		document.getElementById("txtSrcNum").value = "";
+		document.getElementById("txtDestNum").value = "";
+		parent.frames[0].SendCommand( strCommand );
+		CloseTestCall();
+	}
+}
+
+function CloseTestCall()
+{
+	document.getElementById("testcalldiv").innerHTML = "";
+	document.getElementById("testcalldiv").style.visibility = "hidden";
+}
+
+</SCRIPT>
+
+<BODY onselectstart="return false;" bgcolor="white" onLoad="getGWConfig()">
+<font size=4 face="Arial">BRI Card Status</font>
+<hr>
+
+<font face=Arial size=2>
+<div id="selectcard"></div>
+<div id="update_settings"></div>
+<br>
+</font>
+
+<div id="ie5menu" class="skin0" onMouseover="highlightie5()" onMouseout="lowlightie5()" onClick="jumptoie5();">
+<div class="menuitems" url="javascript:TestCall();">Make Test Call</div>
+<div class="menuitems" url="javascript:ClearCall();">Clear Call</div>
+</div>
+
+<script language="JavaScript1.2">
+if (document.all && window.print) {
+ie5menu.className = menuskin;
+document.oncontextmenu = showmenuie5;
+document.body.onclick = hidemenuie5;
+}
+</script>
+
+<div id="container">
+<div class="tableContainer" id="DIV_Status" style="border-style: solid; border-width: thin; width: 550px; height: 428px; visibility: hidden;"></div>
+</div>
+<br>
+<div id="testcalldiv"></div>
+<br>
+
+</BODY>
+</HTML>

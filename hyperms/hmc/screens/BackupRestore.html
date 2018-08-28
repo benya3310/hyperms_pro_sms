@@ -1,0 +1,22 @@
+<html>
+<head><link rel="stylesheet" href="../progress/progress.css"></head>
+<script>
+// Received command from applet
+function init()
+{
+	var host = parent.frames[0].getServerIP();
+	var password = parent.frames[0].getPassword();
+	var url = "http://" + host + "/backup/?password=" + password;
+	document.location.href = url;
+}
+</script>
+<body onLoad="init();">
+<br><hr><center><font face="Arial">Please wait...</font></center><hr>
+    <div id="progress" class="progress spinning" >
+    <h3 class="title"><span id="please_wait_title"></span></h3>
+    <div class="indicator">
+        <div class="value"></div>
+    </div>
+</div>
+</body>
+</html>

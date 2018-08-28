@@ -1,0 +1,471 @@
+<HTML>
+<HEAD><TITLE>Cellular Gateways - Virtual SIMs Allocation</TITLE></HEAD>
+<link type="text/css" href="../default.css" rel="stylesheet">
+<STYLE type=text/css>
+a:link    {color: #0000ff; font-size: 10pt; text-decoration: underline; }
+a:active  {color: #0000ff; font-size: 10pt; text-decoration: underline; }
+a:visited {color: #0000ff; font-size: 10pt; text-decoration: underline; }
+a:hover   {color: #00dd00; font-size: 10pt; text-decoration: underline; }
+</STYLE>
+<SCRIPT language=javascript src="../utils/alloc_logic.js"></SCRIPT>
+<SCRIPT language=javascript src="../utils/level_bar.js"></SCRIPT>
+<SCRIPT language=javascript src="../utils/utilfuncs.js"></SCRIPT>
+<SCRIPT language=javascript src="../utils/sorttable.js"></SCRIPT>
+<SCRIPT>
+
+var G_nCardIndexToSave = 0;
+var G_arAddresses	   = new Array();
+var G_arDeckAddresses  = new Array();
+var G_arTypes		   = new Array();
+var G_arVsimInfo       = new Array();
+var G_SavingToCards    = 0;
+var G_nCurrent         = 0;
+var G_nDecksAmount     = 1;
+var G_nSelectedDeck    = 1;
+var G_nErrorSaving     = 0;
+var G_nCG4MonitorTimerID;
+var G_nCG4SaveErrorTimerID;
+
+/**********************************************************************************************/
+function init()
+/**********************************************************************************************/
+{
+	G_arVsimInfo = new Array();
+	clearTimeout( G_nCG4MonitorTimerID );
+	clearTimeout( G_nCG4SaveErrorTimerID );
+    getGWConfig();
+}
+
+/**********************************************************************************************/
+function getGWConfig()
+/**********************************************************************************************/
+{
+    parent.frames[0].SendCommand( "GetGWConfig" );
+}
+
+/**********************************************************************************************/
+function OnData( strMessage )
+/**********************************************************************************************/
+{
+    var strCommand = new String( strMessage );
+    var strParam = strCommand.split( " " );
+    var strSection;
+    
+    var nCommandStart = strParam[0].length + 1;
+    var strCommandParam = strMessage.substr( nCommandStart );
+    var packStr = new PacketString( strCommandParam );
+    
+    switch ( strParam[0] )
+    {            
+        case "Ack":
+        {
+            if ( G_nCardIndexToSave )
+			{
+				clearTimeout( G_nCG4SaveErrorTimerID );
+				document.getElementById("DIV_SaveConfig").innerHTML += ".";
+				SaveVsimSettings();
+			}
+            break;
+        }
+        
+        case "GWError":
+        {
+            if ( G_nCardIndexToSave )
+			{
+				G_nErrorSaving = 1;
+				clearTimeout( G_nCG4SaveErrorTimerID );
+				document.getElementById("DIV_SaveConfig").innerHTML += ".";
+				SaveVsimSettings();
+			}
+			else
+			{
+				clearTimeout( G_nCG4MonitorTimerID );
+				getInfo();
+			}
+            break;
+        }
+
+        case "GenericReply":
+        {
+			if ( strParam[1].indexOf( "/#48" ) > -1 )
+            {
+				UpdateVsimInfo( packStr );
+				clearTimeout( G_nCG4MonitorTimerID );
+				getInfo();
+			}
+			break; 
+        }
+
+        case "GWConfigInfo":
+        {
+			//first check if there is any CG card in the GW:
+            var objSelect = G_configInfo.getSelectCardHTML( packStr, "CG4.0", "", "" );            
+			var strSelCard = objSelect.m_strSelCard;			          
+            if ( strSelCard == null )
+            {				
+				document.getElementById( "ID_VsimsTable" ).innerHTML = "No cellular card on this deck is linked to a Smart SIM Rack.";
+				return;
+            }
+			G_configInfo.processConfigInfo( packStr );			 
+			FillCardType( "CG4.0" );
+//			FillCardType( "CU4.1" );
+			document.getElementById( "ID_VsimsTable" ).innerHTML = "Please wait";
+            sortCardsAddresses();
+			getInfo();
+            break;
+        }
+        
+        default:
+        {
+            break;
+        }
+    }
+}
+
+/**********************************************************************************************/
+function UpdateVsimInfo( packStr )
+/**********************************************************************************************/
+{
+    var strCardAddr = packStr.getSection( "@" )
+    var strInfo     = packStr.getSection( "q" );
+    var arModParam  = strInfo.split( "|" );            
+
+	G_arVsimInfo[ strCardAddr ] = new Array;
+	
+    for (var i=0 ; i<arModParam.length ; i++)
+	{
+		G_arVsimInfo[ strCardAddr ][ i ] = arModParam[i].split( "," );
+		for (var j=0 ; j<G_arVsimInfo[ strCardAddr ][ i ].length ; j++)
+		{
+			if (G_arVsimInfo[ strCardAddr ][ i ][ j ] == "-")
+			{
+				G_arVsimInfo[ strCardAddr ][ i ][ j ] = "";
+			}
+		}
+	}
+}
+
+/**********************************************************************************************/
+function DisplayDeckSelection()
+/**********************************************************************************************/
+{
+	var strHTML = "<table id='selDeckTbl' bgcolor='#f0f0f0'><tr><td><b>Deck </b></td>";
+        
+	for (var i=1 ; i<=G_nDecksAmount ; i++)
+    {
+		strHTML += "<td width=20><input type=radio name='c' ";
+		strHTML += "value='" + i + "' ";
+		if (i == 1)
+		{
+			strHTML += "checked ";
+		}
+		strHTML += "onClick='onDeckSelected( " + i + " );'>" + i + "</td>";
+	}
+	strHTML += "</tr></table><br><br>";
+	document.getElementById( "ID_DeckSelDiv" ).innerHTML = strHTML;
+}
+
+/**********************************************************************************************/
+function onDeckSelected( nSelDeck )
+/**********************************************************************************************/
+{
+	G_nSelectedDeck = nSelDeck;
+	DisplayVsimsTable();
+}
+
+/**********************************************************************************************/
+function DisplayVsimsTable()
+/**********************************************************************************************/
+{
+	G_arDeckAddresses = new Array();
+
+    document.getElementById("DIV_SaveConfig").innerHTML = "";
+
+	var j = 0;
+	for ( var i=0 ; i<G_arAddresses.length ; i++ )
+	{
+		if ( ( ( G_nSelectedDeck == 1 ) && ( parseInt(G_arAddresses[ i ] , 16) < 0x30 ) ) ||
+			 ( ( G_nSelectedDeck == 2 ) && ( parseInt(G_arAddresses[ i ] , 16) > 0x30 ) )    )
+		{
+			if ( G_arVsimInfo[ G_arAddresses[ i ] ] != null )
+			{
+				G_arDeckAddresses[ j++ ] = G_arAddresses[ i ];
+			}
+		}
+	}
+
+    if ( G_arDeckAddresses.length == 0 ) 
+    {
+       document.getElementById( "ID_VsimsTable" ).innerHTML = "No  cellular cards on this deck are linked to a Smart SIM Rack."; 
+       return;
+    }
+	var strHTML = "<td>Cards displayed below are only CG4 ones, supporting Sim-Server connectivity</td>";
+	strHTML += "<br><br><br>";
+    strHTML += "<table CLASS='TableLight' id='unique_id'><tr class='TableHeader'>";
+    strHTML += "<td width='20px'></td>";
+	for (var arVsim=0 ; arVsim<4 ; arVsim++)
+	{
+		strHTML += "<td align='center' colspan='4' bgcolor='" + ( (arVsim % 2) ? "#efefef" : "#d0d0d0" ) + "'>VSIM " + (arVsim + 1) + "</td>"
+	}
+    strHTML += "</tr>";
+    strHTML += "<tr class='TableHeader'>";
+    strHTML += "<td width='20px'>Card</td>";
+	for ( var arVsim=0 ; arVsim<4 ; arVsim++ )
+	{
+		for ( var arMod=0 ; arMod<4 ; arMod++ )
+		{
+			strHTML += "<td align='center' width='45px' bgcolor='" + ( (arVsim % 2) ? "#efefef" : "#d0d0d0" ) + "'>M" + (arMod + 1) + "</td>"
+		}
+	}
+    strHTML += "</tr>";
+    
+    for ( i=0; i<G_arDeckAddresses.length; i++ )
+    {
+		var strAddress = G_arDeckAddresses[ i ];
+		strHTML += "<tr height='30'><td align='center' bgcolor='" + ( (i % 2) ? "#efefef" : "#d0d0d0" ) + "'>" + (parseInt( strAddress, 16 ) - 0x20) + "</td>";
+		for ( arVsim=0 ; arVsim<4 ; arVsim++ )
+		{
+			for ( arMod=0 ; arMod<4 ; arMod++ )
+			{
+				strHTML += "<td><input type='Text' class='PlanRow' maxlength='3' ";
+				strHTML += "value='" + G_arVsimInfo[ strAddress ][ arMod ][ arVsim ] + "' onFocus='showSave();' onBlur='VsimConflictCheck();'";
+				strHTML += " style=\"width='30px'; background-color: #FFFFFF\" id='txtm_" + strAddress + "_" + arMod + "_" + arVsim + "'></td>";
+			}
+		}
+		strHTML += "</tr>";
+	}
+	
+	strHTML += "</table><br>";
+
+    strHTML += "<tr><td align='left'><a href='javascript:RestoreDefaultVsims()'>Restore Defaults</a></td></tr>";
+	strHTML += "<br><br>";
+	
+	document.getElementById( "ID_VsimsTable" ).innerHTML = strHTML;
+	sortables_init();
+
+	VsimConflictCheck();
+}
+
+/**********************************************************************************************/
+function showSave()
+/**********************************************************************************************/
+{
+    var strSave = utils_getButtonHTML( "Save()", "SaveSettings.jpg" );
+    document.getElementById("DIV_SaveConfig").innerHTML = strSave;
+}
+
+/**********************************************************************************************/
+function RestoreDefaultVsims()
+/**********************************************************************************************/
+{
+	var strID;
+	for ( var i=0 ; i<G_arDeckAddresses.length ; i++ )
+    {
+		var strAddress = G_arDeckAddresses[ i ];
+		var nCardNum   = ( parseInt( strAddress, 16 ) & 0x0F );
+		for ( var arVsim=0 ; arVsim<4 ; arVsim++ )
+		{
+			for ( var arMod=0 ; arMod<4 ; arMod++ )
+			{
+				strID = "txtm_" + strAddress + "_" + arMod + "_" + arVsim;
+				document.getElementById( strID ).value = ( (nCardNum > 0) && (nCardNum < 9) ) ? ( (arVsim * 32) + ((nCardNum-1) * 4) + (arMod + 1) ) : "";
+			}
+		}
+	}
+	showSave();
+	VsimConflictCheck();
+}
+
+/**********************************************************************************************/
+function VsimConflictCheck()
+/**********************************************************************************************/
+{
+	var arVsimAppearanceCnt = new Array();
+	var nCurrentVsim;
+	var nConflictFound;
+
+	for ( var i=1 ; i<=255 ; i++ ) arVsimAppearanceCnt [ i ] = 0;
+
+	for ( var j=0 ; j<2 ; j++ )
+	{
+		for ( i=0 ; i<G_arDeckAddresses.length ; i++ )
+		{
+			for ( var arVsim=0 ; arVsim<4 ; arVsim++ )
+			{
+				for ( var arMod=0 ; arMod<4 ; arMod++ )
+				{
+					nConflictFound = 0;
+					strID = "txtm_" + G_arDeckAddresses [ i ] + "_" + arMod + "_" + arVsim;
+					nCurrentVsim = document.getElementById( strID ).value;
+					if ( ( nCurrentVsim > 0 ) && ( nCurrentVsim < 256 ) )
+					{
+						if ( j == 0 )
+						{
+							arVsimAppearanceCnt [ nCurrentVsim ] ++;
+						}
+						else
+						{
+							if ( arVsimAppearanceCnt [ nCurrentVsim ] > 1 )	nConflictFound = 1;
+						}
+					}
+					else if ( nCurrentVsim != "" )
+					{
+						nConflictFound = 1;
+					}
+					if ( j == 1 )
+					{
+						document.getElementById( strID ).style.backgroundColor = nConflictFound ? "#FA9A9A" : "#FFFFFF";
+					}
+				}
+			}
+		}
+	}		
+}
+
+/**********************************************************************************************/
+function ClearWrongVsimValues()
+/**********************************************************************************************/
+{
+	for ( i=0 ; i<G_arDeckAddresses.length ; i++ )
+	{
+		for ( var arVsim=0 ; arVsim<4 ; arVsim++ )
+		{
+			for ( var arMod=0 ; arMod<4 ; arMod++ )
+			{
+				strID = "txtm_" + G_arDeckAddresses [ i ] + "_" + arMod + "_" + arVsim;
+				nCurrentVsim = document.getElementById( strID ).value;
+				if ( ( nCurrentVsim == 0 ) || ( nCurrentVsim > 255 ) || ( isNaN( nCurrentVsim ) ) )
+				{
+					document.getElementById( strID ).value = "";
+				}
+			}
+		}
+	}		
+}
+
+/**********************************************************************************************/
+function Save()
+/**********************************************************************************************/
+{
+	G_nErrorSaving     = 0;
+	G_nCardIndexToSave = 0;
+	ClearWrongVsimValues();
+	VsimConflictCheck();
+	document.getElementById("DIV_SaveConfig").innerHTML = "Saving...";
+	SaveVsimSettings();
+}
+
+/**********************************************************************************************/
+function SaveVsimSettings()
+/**********************************************************************************************/
+{
+	clearTimeout( G_nCG4SaveErrorTimerID );
+    if ( G_nCardIndexToSave < G_arDeckAddresses.length )
+    {
+        var strVsimValues = "";
+		for ( var arMod=0 ; arMod<4 ; arMod++ )
+		{
+			for ( var arVsim=0 ; arVsim<4 ; arVsim++ )
+			{
+				var strID = "txtm_" + G_arDeckAddresses[ G_nCardIndexToSave ] + "_" + arMod + "_" + arVsim;
+				strVsimValues += document.getElementById( strID ).value;
+				if (arVsim < 3) strVsimValues += ",";
+			}
+			if (arMod < 3) strVsimValues += "|";
+		}
+		var strCommand = "SendGenericPacket 48:/A";
+        strCommand += G_arDeckAddresses[ G_nCardIndexToSave ];
+        strCommand += "/I" + (60 + G_nCardIndexToSave) + "/r0/G" + strVsimValues;
+        G_nCardIndexToSave++;
+		parent.frames[0].SendCommand(strCommand);
+		G_nCG4SaveErrorTimerID = setTimeout("ErrorSaving()",5000);
+    }
+	else
+	{
+		document.getElementById("DIV_SaveConfig").innerHTML = G_nErrorSaving ? "Error saving configuration." : "Configuration saved.";
+		G_nCardIndexToSave = 0;
+	}
+}
+
+/**********************************************************************************************/
+function ErrorSaving()
+/**********************************************************************************************/
+{
+	G_nErrorSaving = 1;
+	clearTimeout( G_nCG4SaveErrorTimerID );
+	SaveVsimSettings();
+	document.getElementById("DIV_SaveConfig").innerHTML += ".";
+}
+
+/**********************************************************************************************/
+function FillCardType( strType )
+/**********************************************************************************************/
+{
+	var arTypeAddr = G_configInfo.getCardTypeAddresses( strType );
+        
+	if ( typeof( arTypeAddr ) != 'undefined' )
+	{
+		for (var i=0; i<arTypeAddr.length; i++)
+		{
+			G_arTypes.push( strType );
+		}
+		G_arAddresses = G_arAddresses.concat( arTypeAddr );
+	}
+}
+
+/**********************************************************************************************/
+function sortCardsAddresses()
+/**********************************************************************************************/
+{
+	var nAddress = new Array();
+	for ( var i=0; i<G_arAddresses.length; i++ )
+	{
+		nAddress[i] = parseInt(G_arAddresses[i] , 16);
+	}
+	nAddress.sort();
+	for ( var i=0; i<nAddress.length; i++ )
+	{
+		G_arAddresses[i] = nAddress[i].toString(16);
+	}
+	G_nDecksAmount = ( ( nAddress[ nAddress.length - 1 ] >= 0x31 ) ? 2 : 1 );
+}
+
+/**********************************************************************************************/
+function getInfo()
+/**********************************************************************************************/
+{
+	if ( G_nCurrent == G_arAddresses.length)
+    {
+        clearTimeout( G_nCG4MonitorTimerID );
+		DisplayDeckSelection();
+		DisplayVsimsTable();
+        return;
+    }    
+	document.getElementById( "ID_VsimsTable" ).innerHTML += "."; 
+    var strCommand = "SendGenericPacket 48:/A";
+    strCommand += G_arAddresses[G_nCurrent];;
+    strCommand += "/I" + (10 + G_nCurrent) + "/r0/Q";
+    parent.frames[0].SendCommand( strCommand );
+    G_nCurrent++;
+    G_nCG4MonitorTimerID = setTimeout("getInfo()",1500);
+}
+
+</SCRIPT>
+
+<BODY onLoad="init();" bgcolor="white" onselectstart="return false;">
+<font size=4 face="Arial">Cellular Cards Virtual SIMs Allocation</font>
+<hr><br>
+
+<font size=2 face="Arial">
+
+<div id="ID_DeckSelDiv"></div>
+
+<div id="ID_VsimsTable"></div>
+<br>
+
+<div id="DIV_SaveConfig"></div>
+
+</font>
+
+</BODY>
+</HTML>

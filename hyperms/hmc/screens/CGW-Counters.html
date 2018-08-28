@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<HTML>
+<HEAD><TITLE>Cellular Cards - Counters</TITLE></HEAD>
+<STYLE type=text/css>TABLE {
+	BORDER-RIGHT: #000000 1px solid; BORDER-TOP: #000000 1px solid; BORDER-LEFT: #000000 1px solid; BORDER-BOTTOM: #000000 1px solid; border-spacing: 0px; cell-spacing: 0px
+}
+TD {
+	PADDING-RIGHT: 0.5em; PADDING-LEFT: 0.5em; FONT-SIZE: 10pt; PADDING-BOTTOM: 2px; PADDING-TOP: 2px; FONT-FAMILY: Arial, Helvetica, sans-serif; WHITE-SPACE: nowrap
+}
+a:link {color: #0000ff; text-decoration: underline; }
+a:active {color: #0000ff; text-decoration: underline; }
+a:visited {color: #0000ff; text-decoration: underline; }
+a:hover {color: #00dd00; text-decoration: none; }
+</STYLE>
+<SCRIPT language=javascript src="../utils/utilfuncs.js"></SCRIPT>
+<SCRIPT language=javascript src="../utils/alloc_logic.js"></SCRIPT>
+<SCRIPT>
+
+var G_arBtnArray = new Array();
+var G_strID = "123";
+//1-4 for reset all module counters
+var G_nModuleCounter = 1; 
+//is current card multi SIM or not
+var G_bMultiSIM = false;
+var G_CallCountersSupported = false;
+var G_BatchReadingSupported = true;
+var G_strLastSelectedCard;
+var G_nCellCountersTimerID;
+var G_QueryTimerID;
+var G_nTotalSIMS;
+
+function preFetch( strImage, nWidth, nHeight )
+{
+	G_arBtnArray[ strImage ] = new Image(nWidth, nHeight);
+	G_arBtnArray[ strImage ].src = strImage;
+}
+
+preFetch( "Up-Reset.jpg", 46, 24 );
+preFetch( "Down-Reset.jpg", 46, 24 );
+preFetch( "Up-Refresh.jpg", 89, 31 );
+preFetch( "Down-Refresh.jpg", 89, 31 );
+
+// Received command from applet
+function init()
+{
+    getGWConfig();
+}
+
+function getGWConfig()
+{
+    parent.frames[0].SendCommand( "GetGWConfig" );
+}
+
+function onSelectCard( strCard, strCardType )
+{
+    var nSlot = G_configInfo.calcSlotNumber( strCard );
+    G_strLastSelectedCard = strCard;
+    document.getElementById("update_settings").innerHTML = getSelCardText( nSlot, strCardType );
+	document.getElementById("DIV_Status").innerHTML = "";
+	showLink ( false );
+	
+	if ( strCardType == "CC4.0" || strCardType == "CT4.1" )
+	{
+		var strHTML = "<table><tr><td>This feature is not supported by this card.</td></tr></table>";
+		document.getElementById("DIV_CellCounter").innerHTML = strHTML;
+		document.getElementById("DIV_CallCounter").innerHTML = "";
+		document.getElementById( "DIV_Refresh" ).innerHTML   = "";
+		return;
+	}
+	
+	G_CallCountersSupported = false;
+	G_BatchReadingSupported = true;
+	getInfo( strCard );
+}
+
+
+function OnData( strMessage )
+{	
+    var strCommand = new String( strMessage );
+    var strParam = strCommand.split( " " );
+    var strSection;
+    
+    var packStr = new PacketString( strParam[1] );
+	
+    switch ( strParam[0] )
+    {
+        case "GWConfigInfo":
+        {
+			//alert( strMessage );
+			var objSelect = G_configInfo.getSelectCardHTML( packStr, "CG4.0,CC4.0,CT4.1,CU4.1,CC4.2", "Select cellular card", "onSelectCard" );
+            var strHTML = objSelect.m_strHTML;
+			var strSelCard = objSelect.m_strSelCard;
+			var strSelCardType = objSelect.m_strSelCardType;
+            document.getElementById("selectcard").innerHTML = strHTML;
+            if ( strSelCard != null )
+            {
+                onSelectCard( strSelCard, strSelCardType );
+            }
+			
+			if ( objSelect.m_strHTML.indexOf("No card") == 0 )
+			{
+				showLink( false );
+			}
+            break;
+        }
+        
+        case "Ack":
+        {
+			var strID = packStr.getSection( "I" );
+			if ( strID != "992" )
+			{
+				return;
+			}
+            //document.getElementById("DIV_Status").innerHTML = "Counter successfully reset.";
+			getInfo( G_strLastSelectedCard );
+            break;
+        }
+        
+        case "GWError":
+        {
+			var strID = packStr.getSection( "I" );
+			if ( strID == G_strID )
+			{
+				clearTimeout(G_QueryTimerID);
+				if ( G_BatchReadingSupported )
+				{
+					G_BatchReadingSupported = false;
+					getInfo( G_strLastSelectedCard );
+				}
+				else
+				{
+					document.getElementById("DIV_Status").innerHTML = "";
+					//clearTimeout(G_nCellCountersTimerID);
+					var strHTML = "<table><tr><td>This feature is not supported by this card.</td></tr></table>";
+					document.getElementById("DIV_CellCounter").innerHTML = strHTML;
+					document.getElementById("DIV_CallCounter").innerHTML = "";
+					document.getElementById( "DIV_Refresh" ).innerHTML   = "";
+					showLink( false );
+				}
+				return;
+			}
+            document.getElementById("DIV_Status").innerHTML = "Error resetting counter (" + strMessage + ")";
+            break;
+        }
+
+		case "CellTimeCountersReply":
+		case "CellCountersReply":
+		{			
+			var g = packStr.getSection( "g" ).split( "," );
+			G_nTotalSIMS = g.length;
+			var strID = packStr.getSection( "I" );
+			
+			if ( strID != G_strID )
+			{
+				return;
+			}
+			
+			document.getElementById("DIV_Status").innerHTML = "";
+            //clearTimeout(G_nCellCountersTimerID);
+			//alert( strMessage );
+			clearTimeout(G_QueryTimerID);
+            displayCellCountersTable( packStr ); 
+			showLink( true );
+			return;
+		}
+		
+        default:
+        {
+            break;
+        }
+    }
+}
+function resetAll( nModule, nResetType )
+{
+    if  ( !confirm( "Are you sure you wish to reset all SIM counters on module "  + nModule + " ?" ) )
+	{
+		return;
+	}
+    G_nModuleCounter = 1;
+    resetModule( nModule, nResetType );
+}
+function getIDBase()
+{
+	return ( 992 + parseInt(G_nTotalSIMS)) - G_nModuleCounter;
+}
+function resetModule( nModule, nResetType )
+{
+    if ( G_nModuleCounter < (G_nTotalSIMS+1) )
+    {
+        G_nCellCountersTimerID = setTimeout("resetModule(" + nModule + " , " + nResetType + ")",1000);
+        strModSIM =  nModule + "." + G_nModuleCounter;
+        document.getElementById("DIV_Status").innerHTML = "Resetting counter  on module " + strModSIM + "...";
+
+/*
+        var strCommand = "CellTimeCounters /A";
+        strCommand += G_strLastSelectedCard;
+        strCommand += "/I992/R" + strModSIM;
+*/
+        var strCommand = "CellCounters /A" + G_strLastSelectedCard + "/I" + getIDBase() + "/r" + strModSIM + "/G" + nResetType;
+		
+		//alert( strCommand );
+	
+        parent.frames[0].SendCommand( strCommand );
+        if ( G_bMultiSIM == false)
+            G_nModuleCounter = (G_nTotalSIMS+1);//not multi sim, stop!
+        else
+            G_nModuleCounter++;
+    }
+    else
+    {
+		clearTimeout(G_nCellCountersTimerID);
+    }
+    
+}
+function resetCounter( strModSIM, nResetType )
+{
+
+	var CounterStr  = new String( strModSIM );
+	var CounterInfo = CounterStr.split( "." );
+
+	if  ( !confirm( "Are you sure you wish to reset SIM counter " + CounterInfo[1] + 
+	                " on module " + CounterInfo[0] + " ?" ) )
+	{
+		return;
+	}
+	
+	document.getElementById("DIV_Status").innerHTML = "Resetting " + strModSIM + "...";
+/*
+    var strCommand = "CellTimeCounters /A";
+    strCommand += G_strLastSelectedCard;
+    strCommand += "/I992/R" + strModSIM;
+*/	
+    var strCommand = "CellCounters /A" + G_strLastSelectedCard + "/I992/r" + strModSIM + "/G" + nResetType;
+
+	//alert( strCommand );
+	
+    parent.frames[0].SendCommand( strCommand );
+}
+
+function doRefresh()
+{
+	document.getElementById("DIV_Status").innerHTML = "Getting information...";
+	getInfo( G_strLastSelectedCard );
+}
+
+function displayCellCountersTable( packStr )
+{
+	var strActiveSIM = packStr.getSection( "S" );
+	var arCallCounters = new Array();
+	if ( strActiveSIM != null )				//message type is "CellTimeCountersReply"
+	{
+		var strInfo = packStr.getSection( "g" );
+		var arCardParam = strInfo.split( "|" );
+		var arActiveSIM = strActiveSIM.split( "," );
+	}
+	else									//message type is "CellCountersReply"
+	{
+		var strChannelInfo = packStr.m_strMessage.split( "r" );
+		var arCardParam = new Array();
+		var arActiveSIM = new Array();
+		for ( var i=1 ; i < strChannelInfo.length ; i++ )
+		{
+			var strTempInfo = new PacketString( strChannelInfo[ i ] );
+			arCardParam[ i-1 ] = strTempInfo.getSection ( "g" );
+			arCallCounters[ i-1 ] = strTempInfo.getSection ( "i" );
+
+			var arTempSIMInfo = arCardParam[ i-1 ].split( "," );
+			if ( arTempSIMInfo.length > 1)
+			{
+				for (var j=0; j < arTempSIMInfo.length; j++)
+				{
+					if ( arTempSIMInfo[ j ].indexOf('*') >= 0 )
+					{
+						arActiveSIM[ i-1 ] = j + 1;
+						break;
+					}
+				}
+				arCardParam[ i-1 ] = arCardParam[ i-1 ].replace( "*" , "" );
+			}
+			if ( arActiveSIM[ i-1 ] == null )
+			{
+				arActiveSIM[ i-1 ] = 1;
+			}
+		}
+	}
+
+	G_CallCountersSupported = ( arCallCounters[ 0 ] != null ) ? true : false;
+
+	strHTML = "<br>";
+	
+	if ( G_CallCountersSupported )
+	{
+		strHTML += "<tr><td><font size=3 face='Arial'>Duration Counters</font></td></tr><br>"
+	}
+
+	strHTML +="<table id='tableCounters'>";
+    
+    for (var i=0; i<arCardParam.length; i++)
+    {
+		var nActiveSIM = parseInt( arActiveSIM[ i ] ) - 1;
+		strHTML += "<tr>";
+		strHTML += "<td bgcolor='#e1e1e1'>Module <b>" + (i+1) + "</b></td>";
+		var strModuleInfo = arCardParam[ i ];
+		var arSIMInfo = strModuleInfo.split( "," );		
+		G_bMultiSIM = ( arSIMInfo.length == 1 ) ? false : true ;
+		for (var j=0; j<arSIMInfo.length; j++)
+		{
+			var strModSIM = "";
+			strModSIM += (i+1);
+			strModSIM += "."
+			strModSIM += (j+1);
+			
+			strHTML += "<td width='125' align='right' bgcolor=" + ( (j == nActiveSIM) ? "'#eff1ff'>" : "'#dedede'>" );
+
+			strHTML += arSIMInfo[ j ];
+			strHTML += "&nbsp;&nbsp;";
+			
+			strHTML += "<img align=\"absmiddle\" name=\"reset" + j + "_" + i + "\" src=\"./Up-Reset.jpg\" ";
+			strHTML += " onmousedown=\"clickIt( this, 'Down-Reset.jpg', 1 );\" ";
+			strHTML += " onMouseOut=\" clickIt( this, 'Up-Reset.jpg', 0 );\" ";
+			strHTML += " onMouseUp=\"if (this.bPressed==1) {clickIt( this, 'Up-Reset.jpg', 0 ); resetCounter('" + strModSIM + "' , ";
+			strHTML += ( G_CallCountersSupported ) ? 1 : 0;
+			strHTML += "); }\" ";
+			strHTML += " onMouseOver=\"style.cursor='hand'\" /> ";
+
+			strHTML += "</td>";
+		}
+		if (G_bMultiSIM == true)
+	    {
+			//add reset all Link
+			strHTML += "<td bgcolor='#dedede'><a href='javascript:resetAll(" + (i+1) + " , ";
+			strHTML += ( G_CallCountersSupported ) ? 1 : 0;
+			strHTML += ")'>Reset All</a></td";
+		}
+		strHTML += "</tr>";
+	}
+    
+    strHTML += "</table><br>";
+
+	document.getElementById( "DIV_CellCounter" ).innerHTML = strHTML;
+	
+	if ( G_CallCountersSupported )
+	{
+		strHTML  = "<br><tr><td><font size=3 face='Arial'>Call Counters</font></td></tr><br>"
+		strHTML +="<table id='tableCallCounters'>";
+		
+		for (var i=0; i<arCallCounters.length; i++)
+		{
+			var nActiveSIM = parseInt( arActiveSIM[ i ] ) - 1;
+			strHTML += "<tr><td bgcolor='#e1e1e1'>Module <b>" + (i+1) + "</b></td>";
+			var arCntInfo = arCallCounters[ i ].split( "," );
+			for (var j=0; j<arCntInfo.length; j++)
+			{
+				var strModSIM = (i+1) + "." + (j+1);
+				strHTML += "<td width='125' align='right' bgcolor=" + ( (j == nActiveSIM) ? "'#eff1ff'>" : "'#dedede'>" );
+				strHTML += arCntInfo[ j ];
+				strHTML += "&nbsp;&nbsp;";
+				strHTML += "<img align=\"absmiddle\" name=\"resetcallcnt" + j + "_" + i + "\" src=\"./Up-Reset.jpg\" ";
+				strHTML += " onmousedown=\"clickIt( this, 'Down-Reset.jpg', 1 );\" ";
+				strHTML += " onMouseOut=\" clickIt( this, 'Up-Reset.jpg', 0 );\" ";
+				strHTML += " onMouseUp=\"if (this.bPressed==1) {clickIt( this, 'Up-Reset.jpg', 0 ); resetCounter('" + strModSIM + "' , 2); }\" ";
+				strHTML += " onMouseOver=\"style.cursor='hand'\" /></td>";
+			}
+			if (G_bMultiSIM == true)
+			{
+				strHTML += "<td bgcolor='#dedede'><a href='javascript:resetAll(" + (i+1)  + " , 2)'>Reset All</a></td";
+			}
+			strHTML += "</tr>";
+		}
+		strHTML += "</table><br><br>";
+	}
+	else
+	{
+		strHTML = "";
+	}
+
+	document.getElementById( "DIV_CallCounter" ).innerHTML = strHTML;
+
+	strHTML  = "<img align=\"absmiddle\" name=\"refresh\" src=\"./Up-Refresh.jpg\" ";
+	strHTML += " onmousedown=\"clickIt( this, 'Down-Refresh.jpg', 1 );\" ";
+	strHTML += " onMouseOut=\" clickIt( this, 'Up-Refresh.jpg', 0 );\" ";
+	strHTML += " onMouseUp=\"if (this.bPressed==1) {clickIt( this, 'Up-Refresh.jpg', 0 ); doRefresh(); }\" ";
+	strHTML += " onMouseOver=\"style.cursor='hand'\" /> ";
+
+	document.getElementById( "DIV_Refresh" ).innerHTML = strHTML;
+}
+
+rnd.today=new Date();
+rnd.seed=rnd.today.getTime();
+
+
+function rnd()
+{
+        rnd.seed = (rnd.seed*9301+49297) % 233280;
+        return rnd.seed/(233280.0);
+};
+
+function rand(number)
+{
+        return Math.ceil(rnd()*number);
+};
+
+function getInfo( strAddress )
+{
+	G_strID = "" + rand(999);
+	//alert( G_strID );
+	if ( G_BatchReadingSupported )
+	{
+		var strCommand = "SendGenericPacket 39:/A" + strAddress + "/I" + G_strID + "/r0.0";
+	}
+	else
+	{
+		var strCommand = "CellTimeCounters /A";
+		strCommand += strAddress;
+		strCommand += "/I" + G_strID;
+	}
+    parent.frames[0].SendCommand( strCommand );
+    G_QueryTimerID = setTimeout("QueryingError()",10000);
+    //document.getElementById("DIV_Status").innerHTML = "Getting information...";
+}
+
+function QueryingError()
+{
+    document.getElementById("DIV_Status").innerHTML = "Error reading information from card, please retry.";
+}
+
+function clickIt( obj, strFile, bPressed )
+{
+	//alert( obj.name );
+    obj.bPressed = bPressed;
+	var str = 'document.all.' + obj.name + '.src = G_arBtnArray["' + strFile + '"].src';
+    eval( str );
+}
+
+function showLink( bVal )
+{
+	var strHTML = "<a href='CGW-CallCountersSteps.html'>Set Counter Steps per Module</a>";
+	if ( bVal == false )
+		strHTML = "";
+	document.getElementById("DIV_Link").innerHTML = strHTML;
+}
+
+</SCRIPT>
+
+<BODY onLoad="init()" bgcolor="white" onselectstart="return false;" ondragstart="return false;">
+<font size=4 face="Arial">Cellular Counters</font>
+<hr>
+
+<font face=Arial size=2>
+<div id="selectcard"></div>
+
+<div id="update_settings"></div>
+<br>
+
+<div id="DIV_CellCounter">
+</div>
+
+<div id="DIV_CallCounter">
+</div>
+
+<div id="DIV_Refresh">
+</div>
+
+<br>
+<div id="DIV_Status">
+</div>
+
+<br>
+<div id="DIV_Link">
+</div>
+
+</font>
+
+</BODY>
+</HTML>

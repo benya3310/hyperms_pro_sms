@@ -1,0 +1,210 @@
+<html>
+<head>
+	<link type="text/css" href="../default.css" rel="stylesheet">
+	<TITLE>Analog Card - CLI programming</TITLE>
+</head>
+
+<SCRIPT language=javascript src="../utils/utilfuncs.js"></SCRIPT>
+<SCRIPT language=javascript src="../utils/alloc_logic.js"></SCRIPT>
+<SCRIPT>
+// Received command from applet
+function init()
+{
+    getGWConfig();
+}
+
+function getGWConfig()
+{
+    parent.frames[0].SendCommand( "GetGWConfig" );
+}
+
+var G_strLastSelectedCard;
+var G_nCLIValuesTimerID;
+
+function onSelectCard( strCard, strCardType )
+{
+    var nSlot = G_configInfo.calcSlotNumber( strCard );
+    G_strLastSelectedCard = strCard;
+    getInfo( strCard );
+    getAlalnogCardType ( strCard );
+    document.getElementById("update_settings").innerHTML = getSelCardText( nSlot, strCardType );
+}
+
+function showSave()
+{
+    var strSave = utils_getButtonHTML( "saveCLIValuesConfig()", "SaveSettings.jpg" );
+    document.getElementById("DIV_SaveConfig").innerHTML = strSave;
+}
+
+function saveCLIValuesConfig()
+{
+    var strCommand = "AnalogSetCLI /A";
+    strCommand += G_strLastSelectedCard;
+    strCommand += "/I28/G";
+
+    for (var i=0; i<8; i++)
+    {
+        var strID = "p" + i; 
+	//if ( i==4 )					//was a patch for SHUSHU
+		strCommand += document.getElementById(strID).value;	
+        if (i != 7)
+        {
+            strCommand += ",";
+        }
+    }
+
+    parent.frames[0].SendCommand( strCommand );
+
+    document.getElementById("DIV_SaveConfig").innerHTML = "Saving configuration...";
+}
+
+function OnData( strMessage )
+{
+    var strCommand = new String( strMessage );
+    var strParam = strCommand.split( " " );
+    var strSection;
+    
+    var packStr = new PacketString( strParam[1] );
+    
+    switch ( strParam[0] )
+    {
+        case "GWConfigInfo":
+        {
+            var objSelect = G_configInfo.getSelectCardHTML( packStr, "AN4.4", "Select analog card", "onSelectCard" );
+            var strHTML = objSelect.m_strHTML;
+            var strSelCard = objSelect.m_strSelCard;
+            var strSelCardType = objSelect.m_strSelCardType;
+            document.getElementById("selectcard").innerHTML = strHTML;
+            if ( strSelCard != null )
+            {
+                onSelectCard( strSelCard, strSelCardType );
+            }
+            break;
+        }
+        
+        case "Ack":
+        {
+            document.getElementById("DIV_SaveConfig").innerHTML = "Configuration saved.";
+            break;
+        }
+        
+        case "CardInfo":
+        {
+            var strCardInfo = new String( packStr.getSection( "i" ) );           
+            
+            
+            showCardType( strCardInfo );            
+            break;
+        }
+        
+        case "GWError":
+        {
+            document.getElementById("DIV_SaveConfig").innerHTML = "Error saving configuration.";
+            break;
+        }
+
+        case "AnalogInfoCLI":
+        {
+            clearTimeout(G_nCLIValuesTimerID);
+            var strInfo = packStr.getSection( "g" );
+            var arParam = strInfo.split( "," );
+            displayTable( arParam ); 
+        }
+        
+        default:
+        {
+            // Send this to TCPServer log file ? internal log file ?
+            //alert( "Got unknown message:" + strMessage );
+            break;
+        }
+    }
+}
+
+function displayTable( arParam )
+{
+    var strHTML = "<table>";
+	document.getElementById("helpSection").className = "visibile";
+
+    for (var i=0; i<arParam.length; i++)
+    {
+        var strChannel;
+        if ( i < 4 )
+        {
+            strChannel = "FXO " + (i+1);
+        }
+        else
+        {
+            strChannel = "FXS " + (i-3);
+        }
+        strHTML += "<tr><td width=90>" + strChannel + "</td>";
+        strHTML += "<td><INPUT TYPE=TEXT size=14 name='p" + i;
+        strHTML += "' value='" + arParam[ i ] + "' onFocus='showSave();'></td></tr>";
+		if (i == 3)
+		{
+			strHTML += "<tr height=20><td></td></tr>";
+		}
+        //i=100;		//*** Only for SHUSHU guys - ugly but works...  - worked only when var loop started from 4 (not 0) ****//
+    }
+    
+    strHTML += "</table>";
+    document.getElementById("DIV_Values").innerHTML = strHTML;
+}
+
+function getInfo( strAddress )
+{
+    var strCommand = "AnalogSetCLI /A";
+    strCommand += strAddress;
+    strCommand += "/I37";
+    parent.frames[0].SendCommand( strCommand );
+    G_nCLIValuesTimerID = setTimeout("getInfo('" + strAddress + "')",4000);
+}
+function getAlalnogCardType( strCardAddr )
+{
+   var strCommand = "SendGenericPacket 65:/I100/Q1/A" + strCardAddr;
+   parent.frames[0].SendCommand( strCommand );
+   
+}
+function showCardType( strCardInfo )
+{
+     if ( strCardInfo != "null" && strCardInfo != "-")
+     {
+        var strCardType = "<b>Card Type: </b>" + strCardInfo + "<br>";
+        document.getElementById("card_type").innerHTML = strCardType;
+     }
+     else
+     {
+         document.getElementById("card_type").innerHTML = "";
+     }
+}
+
+</SCRIPT>
+
+<BODY onLoad="init()" bgcolor="white" ondragstart="return false;">
+<font size=4 face="Arial">Analog Card CLI Values</font>
+<hr>
+
+<font face=Arial size=2>
+<div id="selectcard"></div>
+
+<div id="update_settings"></div>
+<br>
+
+<div id="card_type"></div>
+<br>
+
+<div id="DIV_Values">
+</div>
+
+<br>
+<div id="DIV_SaveConfig">
+</div>
+
+</font>
+<div id="helpSection" >
+	<div class="title">CLI values</div>
+	These values are used as the calling party numbers on calls coming through the FXO/FXS ports, when routed to the
+	paired resources (CG4, PRI, VoIP channels etc.)<br />
+    </div>
+
+</BODY>
+</HTML>

@@ -1,0 +1,263 @@
+<HTML>
+<HEAD><TITLE>PRI - Configuration</TITLE></HEAD>
+<STYLE type=text/css>TABLE {
+	BORDER-RIGHT: #000000 1px solid; BORDER-TOP: #000000 1px solid; BORDER-LEFT: #000000 1px solid; BORDER-BOTTOM: #000000 1px solid; border-spacing: 0px; cell-spacing: 0px
+}
+TD {
+	PADDING-RIGHT: 0.5em; PADDING-LEFT: 0.5em; FONT-SIZE: 10pt; PADDING-BOTTOM: 2px; PADDING-TOP: 2px; FONT-FAMILY: Arial, Helvetica, sans-serif; WHITE-SPACE: nowrap
+}
+</STYLE>
+<SCRIPT language=javascript src="../utils/utilfuncs.js"></SCRIPT>
+<SCRIPT language=javascript src="../utils/alloc_logic.js"></SCRIPT>
+<SCRIPT>
+// Received command from applet
+var G_bSaving = 0;
+var G_arVPNGroups = new Array();
+
+function init()
+{
+	parent.frames[0].SendCommand( "GetGWConfig" );
+}
+
+var G_strLastSelectedCard;
+var G_nCallbackTriggerInfoTimerID;
+
+function onSelectCard( strCard, strCardType )
+{
+	if ( strCard == null )
+	{
+		return;
+	}
+    var nSlot = G_configInfo.calcSlotNumber( strCard );
+    G_strLastSelectedCard = strCard;
+    getInfo( strCard );
+    //document.getElementById("update_settings").innerHTML = getSelCardText( nSlot, strCardType );
+}
+
+function showSave( nIndex )
+{
+    /*
+    if ( document.getElementById("DIV_SaveConfig").innerHTML == "Saving configuration..." )
+    {
+        return;
+    }
+    */
+	var strLogicalAddr = new String( G_configInfo.getMatrixAllocations( G_strLastSelectedCard )[ nIndex ] );
+	var arAddrChannel = strLogicalAddr.split( "." );
+	
+    var strSave = utils_getButtonHTML( "saveCallbackTriggerConfig()", "SaveSettings.jpg" );
+    document.getElementById("DIV_SaveConfig").innerHTML = strSave;
+}
+
+function saveCallbackTriggerConfig()
+{
+    var strCommand = "SetCallbackTrigger /A";
+    strCommand += G_strLastSelectedCard;
+    strCommand += "/I231/G";
+
+	var nTotalChannels = 128;
+    for (var i=0; i<nTotalChannels; i++)
+    {
+        var strID = "p" + i;
+		var objCheck = document.getElementById(strID);
+
+		var strChecked;
+		
+		if (objCheck == null)
+		{
+			strChecked = "";
+		}
+		else
+		if ( objCheck.checked==true )
+		{
+			strChecked = "1";
+		}
+		else
+		if ( objCheck.checked==false )
+		{
+			strChecked = "";
+		}
+		
+        strCommand += strChecked;
+		
+        if ( i != nTotalChannels-1 )
+        {
+            strCommand	+= ",";
+        }
+    }
+
+	G_bSaving = 1;
+//alert( strCommand );
+//return;
+	
+    parent.frames[0].SendCommand( strCommand );
+
+    document.getElementById("DIV_SaveConfig").innerHTML = "Saving configuration...";
+}
+
+function OnData( strMessage )
+{
+
+    var strCommand = new String( strMessage );
+    var strParam = strCommand.split( " " );
+    var strSection;
+    
+    var packStr = new PacketString( strParam[1] );
+    
+    switch ( strParam[0] )
+    {
+        case "GWConfigInfo":
+        {
+			var objSelect = G_configInfo.getSelectCardHTML( packStr, "LCR", "Select LCR card" );
+            var strHTML = objSelect.m_strHTML;
+			var strSelCard = objSelect.m_strSelCard;
+			var strSelCardType = objSelect.m_strSelCardType;
+           // document.getElementById("selectcard").innerHTML = strHTML;
+            if ( strSelCard != null )
+            {
+                onSelectCard( strSelCard, strSelCardType );
+            } 
+            else          
+			  {
+				document.getElementById("DIV_PRICallbackTriggers").style.visibility = "hidden";
+				document.getElementById("DIV_PRICallbackTriggersHeader").innerHTML = "No LCR was found.";
+			  }
+            break;
+        }
+        
+        case "GWError":
+        {
+            document.getElementById("DIV_SaveConfig").innerHTML = "Error saving configuration.";
+            break;
+        }
+
+        case "CallbackTriggerReply":
+        {
+			//alert( strMessage );
+            clearTimeout(G_nCallbackTriggerInfoTimerID);
+            var strInfo		= packStr.getSection( "g" );
+            var arParam		= strInfo.split( "," );
+            var strApps		= packStr.getSection( "a" );
+            var arApps		= strApps.split( "," );
+			
+			//alert( "strInfo=" + strInfo + "strGroups=" + strGroups );
+            displayCallbackTriggersTable( arParam, arApps ); 
+			
+			if ( G_bSaving == 1 )
+			{
+				G_bSaving = 0;
+				document.getElementById("DIV_SaveConfig").innerHTML = "Configuration saved.";
+			}
+        }
+        
+        default:
+        {
+            // Send this to TCPServer log file ? internal log file ?
+            //alert( "Got unknown message:" + strMessage );
+            break;
+        }
+    }
+}
+
+function displayCallbackTriggersTable( arParam, arApps )
+{
+    var strHTML = "<table>";
+    strHTML += "<tr><td id='channel'></td>";
+	strHTML += "<td width='190' id='status'></td>";
+	strHTML += "<td width='110' id='setAsTrigger'></td></tr>";	
+
+	for (var i=0; i<arParam.length; i++)
+    {
+        strHTML += "<tr><td>Channel " + (i+1) + "</td>";
+		
+		if ( arParam[ i ] == "X" )
+		{
+			strHTML += "<td align='left'>Used as " + arApps[ i ];
+			strHTML += "</td>";
+			strHTML += "<td>";
+			strHTML += "---";
+			strHTML += "</td>";
+		}
+		else
+		if ( arParam[ i ] == "0" )
+		{
+			strHTML += "<td>";
+			strHTML += "Free.";
+			strHTML += "</td>";
+			strHTML += "<td>";
+			strHTML += "<INPUT TYPE=CHECKBOX id='p" + i + "' onClick='showSave(" + i + ");'>";
+			strHTML += "</td>";
+		}
+		else
+		if ( arParam[ i ] == "1" )
+		{
+			strHTML += "<td>";
+			strHTML += "Used as Callback Trigger";
+			strHTML += "</td>";
+			strHTML += "<td>";
+			strHTML += "<INPUT TYPE=CHECKBOX DISABLED CHECKED id='p" + i + "'>";
+			strHTML += "</td>";
+		}
+		else
+		if ( arParam[ i ] == "" )
+		{
+			strHTML += "<td>";
+			strHTML += "Unmapped.";
+			strHTML += "</td>";
+			strHTML += "<td>";
+			strHTML += "---";
+			strHTML += "</td>";
+		}
+		
+        strHTML += "</tr>";
+    }
+	
+    strHTML += "</table>";
+    
+    document.getElementById("DIV_PRICallbackTriggers").innerHTML = strHTML;
+	
+    strHTML = "<table>";
+    strHTML += "<tr bgcolor='#f0f0f0'><td width='"
+	strHTML += document.getElementById( 'channel' ).clientWidth + "'>Channel</td>";
+	strHTML += "<td width='"
+	strHTML += document.getElementById( 'status' ).clientWidth + "'>Status</td>";
+	strHTML += "<td width='"
+	strHTML += document.getElementById( 'setAsTrigger' ).clientWidth + "'>Set As Trigger</td>";	
+    strHTML += "</table>";
+	
+	document.getElementById("DIV_PRICallbackTriggersHeader").innerHTML = strHTML;
+}
+
+function getInfo( strAddress )
+{
+    var strCommand = "GetCallbackTrigger /A";
+    strCommand += strAddress;
+    strCommand += "/I27";
+    parent.frames[0].SendCommand( strCommand );
+    G_nCallbackTriggerInfoTimerID = setTimeout("getInfo('" + strAddress + "')",4000);
+}
+</SCRIPT>
+
+<BODY onLoad="init()" bgcolor="white" onselectstart="return false;" ondragstart="return false;">
+<font size=4 face="Arial">PRI Card Callback Triggers</font>
+<hr>
+
+<font face=Arial size=2>
+<div id="selectcard"></div>
+
+<div id="update_settings"></div>
+<br>
+
+<div id="DIV_PRICallbackTriggersHeader">
+</div>
+<div id="DIV_PRICallbackTriggers" style="border-style: solid; border-width: thin; width: 400px; height: 300px; overflow: auto;">
+</div>
+
+<br>
+<div id="DIV_SaveConfig">
+</div>
+
+</font>
+
+</BODY>
+</HTML>

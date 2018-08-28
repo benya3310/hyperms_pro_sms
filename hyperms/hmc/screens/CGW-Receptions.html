@@ -1,0 +1,423 @@
+<HTML>
+<STYLE type=text/css>TABLE {
+	BORDER-RIGHT: #000000 1px solid; BORDER-TOP: #000000 1px solid; BORDER-LEFT: #000000 1px solid; BORDER-BOTTOM: #000000 1px solid; border-spacing: 0px; cell-spacing: 0px
+}
+TD {
+	PADDING-RIGHT: 0.5em; PADDING-LEFT: 0.5em; FONT-SIZE: 10pt; PADDING-BOTTOM: 2px; PADDING-TOP: 2px; FONT-FAMILY: Arial, Helvetica, sans-serif; WHITE-SPACE: nowrap
+}
+</STYLE>
+<SCRIPT language=javascript src="../utils/alloc_logic.js"></SCRIPT>
+<SCRIPT language=javascript src="../utils/level_bar.js"></SCRIPT>
+<SCRIPT language=javascript src="../utils/utilfuncs.js"></SCRIPT>
+<SCRIPT>
+var G_levels = new Array();
+var G_operators = new Array();
+var G_BERlevels = new Array();
+var G_CellIDs = new Array();
+var G_nTotal = 4;
+var G_strLastCardType = "";
+
+var G_arBERLevels = new Array();
+var G_arBERLevelsTDMA = new Array();
+var G_arNetTypeName = new Array();
+
+G_arBERLevels[ 0 ] = "Less than 0.2%";
+G_arBERLevels[ 1 ] = "0.2% to 0.4%";
+G_arBERLevels[ 2 ] = "0.4% to 0.8%";
+G_arBERLevels[ 3 ] = "0.8% to 1.6%";
+G_arBERLevels[ 4 ] = "1.6% to 3.2%";
+G_arBERLevels[ 5 ] = "3.2% to 6.4%";
+G_arBERLevels[ 6 ] = "6.4% to 12.8%";
+G_arBERLevels[ 7 ] = "Higher than 12.8%";
+G_arBERLevels[ 8 ] = "Unavailable";
+
+G_arBERLevelsTDMA[ 0 ] = "Less than 0.01%";
+G_arBERLevelsTDMA[ 1 ] = "0.01% to 0.1%";
+G_arBERLevelsTDMA[ 2 ] = "0.1% to 0.5%";
+G_arBERLevelsTDMA[ 3 ] = "0.5% to 1.0%";
+G_arBERLevelsTDMA[ 4 ] = "1.0% to 2.0%";
+G_arBERLevelsTDMA[ 5 ] = "2.0% to 4.0%";
+G_arBERLevelsTDMA[ 6 ] = "4.0% to 8.0%";
+G_arBERLevelsTDMA[ 7 ] = "Higher than 8.0%";
+G_arBERLevelsTDMA[ 8 ] = "Unavailable";
+
+G_arNetTypeName[ "0" ] = " [GSM]";
+G_arNetTypeName[ "2" ] = " [UMTS]";
+
+function getRXLevelText( nRXLevel, strRxValType )
+{
+    var strRetVal = "unknown";
+
+	if ( ( G_strLastCardType != "CC4.0" ) && ( G_strLastCardType != "CC4.2" ) )
+	{
+		switch ( nRXLevel )
+		{
+			case 0:
+			{
+				strRetVal = "-113 dBm or less";
+				break;
+			}
+
+			case 31:
+			{
+				strRetVal = "-51 dBm or greater";
+				break;
+			}
+
+			case 32:	// GSM
+			{
+				strRetVal = "Unavailable";
+				break;
+			}
+		}
+
+		if ( nRXLevel >= 1 && nRXLevel <= 30 )
+		{
+			strRetVal = (-111 + 2*nRXLevel) + " dBm";
+		}
+	}
+	else if ( G_strLastCardType == "CC4.2" )
+	{
+		if ( strRxValType == "" )
+		{
+			switch ( nRXLevel )
+			{
+				case 0:
+				{
+					strRetVal = "-113 dBm or less";
+					break;
+				}
+
+				case 31:
+				{
+					strRetVal = "-51 dBm or greater";
+					break;
+				}
+
+				case 32:
+				{
+					strRetVal = "Unavailable";
+					break;
+				}
+
+				default:
+				{
+					if ( nRXLevel >= 1 && nRXLevel <= 30 )
+					{
+						strRetVal = ( (2 * nRXLevel) - 113 ) + " dBm";
+					}
+					break;
+				}
+			}
+		}
+		else
+		{
+			if ( nRXLevel >= 0 && nRXLevel <= 31 )
+			{
+				strRetVal = Math.round(-110 + 1.09375*nRXLevel) + " dBm";
+			}
+			else strRetVal = "Unavailable";
+		}
+	}
+	else
+	{
+		if ( nRXLevel == 200 )	// CDMA
+		{
+			strRetVal = "Unavailable";
+		}
+		else
+		{
+			strRetVal = nRXLevel + "%";
+		}
+	}
+
+    return strRetVal;
+}
+
+function getBERLevelText( nRXBER )
+{
+	//alert( G_strLastCardType + " " + nRXBER );
+	var strRetVal = "";
+	if ( G_strLastCardType == "CG4.0" || G_strLastCardType == "CU4.1" )
+	{
+		strRetVal = G_arBERLevels[ nRXBER ];
+	}
+	else if ( G_strLastCardType == "CT4.1" || G_strLastCardType == "CC4.2" )
+	{
+		strRetVal = G_arBERLevelsTDMA[ nRXBER ];
+	}
+	return strRetVal;
+}
+
+function init()
+{
+	var nMax = 32;
+
+	if ( G_strLastCardType == "CC4.0" )
+	{
+		nMax = 100;
+	}
+
+    var strNameLevel = "RX Level";
+    var strNameBER   = ( G_strLastCardType == "CC4.2" ) ? "RX FER" : "RX BER";
+
+    for (var i=0; i<G_nTotal; i++)
+    {
+		G_levels[ i ] = new LevelBar( strNameLevel, nMax );
+		if ( G_strLastCardType != "CC4.0" )
+		{
+			G_BERlevels[ i ] = new LevelBar( strNameBER, 8 );
+		}
+    }
+
+    var strHTML = "<font size=2 face='Arial'><table>";
+    for (var i=0; i<G_nTotal; i++)
+    {
+        strHTML += "<tr><td><b>Module " + (i+1) + ":</b></td></tr>"
+        strHTML += "<tr><td align=right>Operator</td>"
+        strHTML += "<td><div id='O" + i + "'>-</div></td><td></td><td><div id='CI" + i + "'></div></td></tr>";
+		strHTML += G_levels[i].getHTML();
+
+		if ( G_strLastCardType != "CC4.0" )
+		{
+			strHTML += G_BERlevels[i].getHTML();
+		}
+        strHTML += "<tr height=10><td></td></tr>";
+    }
+    strHTML += '</table></font>';
+
+    document.getElementById("levels1").innerHTML = strHTML;
+    for (var i=0; i<G_nTotal; i++)
+    {
+        G_levels[ i ].init( document );
+		if ( G_strLastCardType != "CC4.0" )
+		{
+			G_BERlevels[ i ].init( document );
+		}
+        G_operators[ i ] = document.getElementById("O"  + i);
+        G_CellIDs[ i ]   = document.getElementById("CI" + i);
+    }
+}
+
+function OnData( strMessage )
+{
+    var strCommand = new String( strMessage );
+    var strParam = strCommand.split( " " );
+    var strSection;
+
+    var nCommandStart = strParam[0].length + 1;
+    var strCommandParam = strMessage.substr( nCommandStart );
+    var packStr = new PacketString( strCommandParam );
+
+    switch ( strParam[0] )
+    {
+
+        case "CellRXLevel":
+        {
+            var strRXLevel      = new String( packStr.getSection( "Q" ) );
+            var strRXBER        = new String( packStr.getSection( "q" ) );
+            var strOperator     = new String( packStr.getSection( "O" ) );
+            var strCellID		= new String( packStr.getSection( "g" ) );
+            var strNetType		= new String( packStr.getSection( "t" ) );
+            var strRxValType	= new String( packStr.getSection( "L" ) );
+            //check if null
+            if (strNetType.length == 4)
+               strNetType = "0,0,0,0";
+            var arLevels        = strRXLevel.split(",");
+            var arBERs          = strRXBER.split(",");
+            var arOperators     = strOperator.split(",");
+			var arCellIDs		= strCellID.split(",");
+			var arNetTypes		= strNetType.split(",");
+
+            if ( arLevels.length > G_nTotal /*|| arLevels.length != arBERs.length*/ )
+            {
+                alert( "Invalid number of parameters" );
+                return;
+            }
+
+            for (var i=0; i<arLevels.length; i++)
+            {
+                var nRXLevel = 0;
+                var nRXBER = 0;
+                nRXLevel = parseInt(arLevels[ i ]);
+				if ( G_strLastCardType == "CG4.0" ||
+					 G_strLastCardType == "CT4.1" ||
+					 G_strLastCardType == "CU4.1" ||
+					 G_strLastCardType == "CC4.2" )
+				{
+					nRXBER = parseInt(arBERs[ i ]);
+                }
+
+				var strOperatorField = arOperators[ i ];
+				var strCellIdField = "";
+
+				if ( ( G_strLastCardType == "CG4.0" ) || ( G_strLastCardType == "CU4.1" ) )
+				{
+					//if ( arNetTypes[ i ] == undefined ) arNetTypes[i] = "0";
+
+					if ( ( arNetTypes[ i ] == "0" ) || ( arNetTypes[ i ] == "2" )  )
+					{
+						strOperatorField += G_arNetTypeName[ arNetTypes[ i ] ];
+					}
+				}
+
+				if ( ( G_strLastCardType == "CG4.0" ) || ( G_strLastCardType == "CC4.2" ) || ( G_strLastCardType == "CU4.1" ) )
+				{
+					if ( ( arCellIDs[ i ] != "0000" ) && ( arCellIDs[ i ] != "" ) )
+					{
+						strCellIdField += "<font color='#a0a0a0'>(Cell ID: " + arCellIDs[ i ] + ")";
+					}
+				}
+
+                G_operators[ i ].innerHTML = strOperatorField;
+                //alert(G_operators[ i ].innerHTML);
+                G_CellIDs[ i ].innerHTML   = strCellIdField;
+
+				var nNotDetectable;
+				if ( G_strLastCardType == "CC4.0" )
+				{
+					nNotDetectable = 200;
+				}
+				else
+				if ( G_strLastCardType == "CG4.0" ||
+					 G_strLastCardType == "CT4.1" ||
+					 G_strLastCardType == "CU4.1" ||
+					 G_strLastCardType == "CC4.2" )
+				{
+					nNotDetectable = 32;
+				}
+
+                if ( nRXLevel < nNotDetectable )
+                {
+                    G_levels[i].setLevel( (nRXLevel+1), getRXLevelText(nRXLevel, strRxValType) );
+                }
+                else
+                {
+                    G_levels[i].setLevel( 0, getRXLevelText(nRXLevel, strRxValType) );
+                }
+
+				if ( G_strLastCardType == "CG4.0" ||
+					 G_strLastCardType == "CT4.1" ||
+					 G_strLastCardType == "CU4.1" ||
+					 G_strLastCardType == "CC4.2" )
+				{
+					if ( nRXBER < 8 )
+					{
+						G_BERlevels[i].setLevel( nRXBER, getBERLevelText(nRXBER) );
+					}
+					else
+					{
+						G_BERlevels[i].setLevel( 0, getBERLevelText(nRXBER) );
+					}
+				}
+            }
+            break;
+        }
+
+/*
+        case "CellStatus":
+        {
+            var strStatus      = new String( packStr.getSection( "g" ) );
+
+            var strStatus = new String(strStatus);
+            var arStatus  = strStatus.split( "," );
+            var strResult = "";
+            for (var i=0; i<arStatus.length; i++)
+            {
+                G_oStatus[ i ].innerHTML = G_CellModuleStatusMap[ arStatus[ i ] ];
+            }
+            break;
+        }
+*/
+        case "GWError":
+        {
+            alert( "Got error message:" + strMessage );
+            break;
+        }
+
+        case "GWConfigInfo":
+        {
+			var objSelect = G_configInfo.getSelectCardHTML( packStr, "CG4.0,CC4.0,CT4.1,CU4.1,CC4.2", "Select cellular card", "onSelectCard" );
+            var strHTML = objSelect.m_strHTML;
+			var strSelCard = objSelect.m_strSelCard;
+			var strCardType = objSelect.m_strSelCardType;
+            document.getElementById("selectcard").innerHTML = strHTML;
+            if ( strSelCard != null )
+            {
+             onSelectCard( strSelCard, strCardType );
+            }
+            else
+            {
+            document.getElementById("selectcard").innerHTML = "No cellular card was detected.";
+            document.getElementById("update_settings").innerHTML = "";
+
+            }
+            break;
+        }
+
+        default:
+        {
+            //alert( "Got unknown message:" + strMessage );
+            break;
+        }
+    }
+}
+
+function getGWConfig()
+{
+    parent.frames[0].SendCommand( "GetGWConfig" );
+}
+
+function onSelectCard( strCard, strCardType )
+{
+	if ( G_strLastCardType != strCardType )
+	{
+		G_strLastCardType = strCardType;
+		init();
+	}
+
+	var nSlot = G_configInfo.calcSlotNumber( strCard );
+
+    for (var i=0; i<G_nTotal; i++)
+    {
+        G_levels[i].setLevel( 0 , "" );
+		if ( G_strLastCardType != "CC4.0" )
+		{
+			G_BERlevels[i].setLevel( 0 , "" );
+		}
+        G_operators[ i ].innerHTML = "";
+        G_CellIDs[ i ].innerHTML = "";
+    }
+
+    getInfo( strCard );
+    document.getElementById("update_settings").innerHTML = getSelCardText( nSlot, strCardType );
+}
+
+var G_nCG4MonitorTimerID;
+
+function getInfo( strAddress )
+{
+    clearTimeout(G_nCG4MonitorTimerID);
+	var strCommand = "CellGetRX /I123/M0/A" + strAddress;
+    parent.frames[0].SendCommand( strCommand );
+    G_nCG4MonitorTimerID = setTimeout("getInfo('" + strAddress + "')",4000);
+}
+
+</SCRIPT>
+
+<BODY onLoad="getGWConfig();" bgcolor="white" onselectstart="return false;">
+<font size=4 face="Arial">Cellular Card Receptions</font>
+<hr>
+<font face=Arial size=2>
+<div id="selectcard"></div>
+
+<div id="update_settings"></div>
+<br>
+</font>
+<font size=1 face="Arial">
+<div id="levels1"></div>
+</font>
+
+
+</BODY>
+</HTML>

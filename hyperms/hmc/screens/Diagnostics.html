@@ -1,0 +1,484 @@
+<html>
+<STYLE type=text/css>
+a:link {color: #0000ff; text-decoration: none; }
+a:active {color: #0000ff; text-decoration: none; }
+a:visited {color: #0000ff; text-decoration: none; }
+a:hover {color: #00dd00; text-decoration: none; }
+</STYLE>
+
+<body>
+<SCRIPT language="javascript" src="../utils/vutils.js"></SCRIPT>
+<SCRIPT language="javascript" src="../utils/utilfuncs.js"></SCRIPT>
+<SCRIPT language="javascript" src="../utils/alloc_logic.js"></SCRIPT>
+<SCRIPT language="javascript" src="../utils/json2.js"></SCRIPT>
+</script>
+<script type="text/javascript">
+var g_strTableHTML = "";
+var G_nLastSlotNum = 32;
+var G_arSerNum2CardName = new Array;
+G_arSerNum2CardName[ "003" ] = "MG";
+G_arSerNum2CardName[ "006" ] = "PC";
+G_arSerNum2CardName[ "008" ] = "PM";
+G_arSerNum2CardName[ "011" ] = "CB";
+G_arSerNum2CardName[ "012" ] = "PRI2.2";
+G_arSerNum2CardName[ "014" ] = "HBD";
+G_arSerNum2CardName[ "015" ] = "PRI2.1";
+G_arSerNum2CardName[ "017" ] = "S-HUB";
+G_arSerNum2CardName[ "018" ] = "SU";
+G_arSerNum2CardName[ "019" ] = "HBS";
+G_arSerNum2CardName[ "020" ] = "HBN";
+G_arSerNum2CardName[ "022" ] = "PC";
+G_arSerNum2CardName[ "025" ] = "MC1.0";
+G_arSerNum2CardName[ "026" ] = "MC1.1";
+G_arSerNum2CardName[ "027" ] = "MC1.2";
+
+var G_nID = 0;
+
+var G_arVersions;
+var G_arSerials;
+var G_arModules;
+var G_arRealSlot;
+var G_sgwVer = "";
+
+
+function getSerialNumbers()
+{
+    SendCommand( "SendGenericPacket 53:/I998/A0" );
+}
+
+function getVersionInfo()
+{
+    SendCommand( "SendGenericPacket 85:/I999/G/A0" );
+}
+
+function getAdditionalModules()
+{
+    SendCommand( "SendGenericPacket 65:/I997/Q1/A0" );
+}
+
+function getSubVersionInfo()
+{
+    for (var i=0 ; i<=G_nLastSlotNum ; i++)
+    {
+        if ( typeof G_arSerials[ i ] != 'undefined' )
+        {
+            if ( G_arSerials[ i ].indexOf( "017" ) == 0 )           // S-HUB
+            {
+                SendCommand( "SendGenericPacket 85:/x2/I996/G/A" + (i + 0x20).toString(16) );
+            }
+        }
+    }
+}
+
+var g_bWarrantyRequested = false;
+
+function countDown( counter )
+{
+    var cdisplay = "";
+    if (counter > 0)
+    {
+        document.getElementById( "idCountDown" ).innerHTML = counter;
+        cdisplay += counter;
+        setTimeout( "countDown("+(counter-1)+")", 1000 );
+    }
+    else
+    {
+        if (g_bWarrantyRequested)
+            sendWarrantyRequest();
+        document.getElementById( "idCountDown" ).innerHTML = "";
+        document.getElementById( "idProgress" ).innerHTML = "";
+    }
+    
+}
+
+function cardDiag()
+{
+    var obj = document.getElementById( "idProgress" );
+    if (obj.innerHTML != "")
+    {
+        alert( "Please wait until data collection is completed" );
+        return;
+    }
+    if ( g_bWarrantyRequested )
+    {
+        document.getElementById( "idProgress" ).innerHTML = "<img src='../utils/arrows.gif'></img>";
+        setTimeout( "countDown(8)", 1000 );
+    }
+    document.getElementById("DIV_TableInfo").innerHTML = "";
+
+    G_arVersions    = new Array();
+    G_arSerials     = new Array();
+    G_arModules     = new Array();
+    G_arRealSlot    = new Array();
+    G_sgwVer        = "";
+
+    SendCommand( "GetGWConfig" );
+    SendCommand( "SendGenericPacket 53:/I987/AFF" );
+    setTimeout( "getMGInfo()",            2000 );
+    setTimeout( "getVersionInfo()",       3000 );
+    setTimeout( "getSerialNumbers()",     4000 );
+    setTimeout( "getAdditionalModules()", 5000 );
+    setTimeout( "getSubVersionInfo()",    6000 );
+}
+
+function getMGInfo()
+{
+    SendCommand( ".GetCardInfo /AMG/I989" );
+}
+
+function SendCommand( strMessage )
+{
+    return parent.frames[0].SendCommand( strMessage );
+}
+
+function buildInfoTable()
+{
+    var strHTML = "<table  id='idInfoTable' border='1' rules='rows'><tr bgcolor='#eeeeff'><td><b>Slot</b></td><td><b>Card Type</b></td><td width=260><b>Versions</b></td><td width=70><b>Serial #</b></td><td><b>I2C Addr.</b></td><td colspan='4' align='center' width=560><b>Additional Modules</b></td></tr>";
+    for (var j=0; j<=G_nLastSlotNum; j++)
+    {
+        if ( ( typeof G_arRealSlot[ j ] != 'undefined' ) && ( G_arRealSlot[ j ] != j ) )
+        {
+            continue;
+        }
+
+        for (var i=0 ; i<=G_nLastSlotNum ; i++)
+        {
+
+            if ( ( typeof G_arRealSlot[ i ] == 'undefined' ) || ( G_arRealSlot[ i ] != j ) )
+            {
+                continue;
+            }
+
+            if ( ( typeof G_arVersions[ i ] == 'undefined' ) && ( typeof G_arSerials[ i ] == 'undefined' ) && ( typeof G_arModules[ i ] == 'undefined' ) )
+            {
+                continue;
+            }
+
+            var strVersion  = "-";
+            var strSerial   = "-";
+            var strModules  = "";
+            var arRealSlot  = "";
+            var UsedModuleCells = 0;
+
+            var nCardAddr = i + 0x20;
+            var strAddr = nCardAddr.toString( 16 );
+            var strCardName = G_configInfo.addr2Name( strAddr );
+            var re;
+
+            if ( typeof G_arVersions[ i ] != 'undefined' )
+            {
+                strVersion = G_arVersions[ i ];
+            }
+            if ( typeof G_arSerials[ i ] != 'undefined' )
+            {
+                strSerial = G_arSerials[ i ];
+            }
+            if (typeof strCardName == 'undefined')
+            {
+                strCardName = "Other";
+            }
+
+            arRealSlot = G_arRealSlot[ i ];
+
+            re = /\(\d+\)/;
+            strCardName = strCardName.replace( re, "" );
+            re = /CG4.0/;
+            strCardName = strCardName.replace( re, "CG4.1" );
+            re = /E1.0/;
+            strCardName = strCardName.replace( re, "PRI1.1" );
+            re = /T1.0/;
+            strCardName = strCardName.replace( re, "PRI1.1 - T1" );
+
+            for ( var strKey in G_arSerNum2CardName )
+            {
+                if ( strSerial.indexOf( strKey ) == 0 )
+                {
+                    strCardName = G_arSerNum2CardName[ strKey ];
+                }
+            }
+
+            if ( typeof G_arModules[ i ] != 'undefined' )
+            {
+                if ( ( strCardName == "CG4.1" ) || ( strCardName == "CU4.1" ) || ( strCardName == "CC4.0" ) || ( strCardName == "CC4.2" ) )
+                {
+                    strModules = "<td bgcolor='#c0c0c0' align='center' width=135>" + G_arModules[ i ];
+                    re = /,/;
+                    strModules = strModules.replace( re, "</td><td bgcolor='#c0c0c0' align='center' width=135>" );
+                    strModules = strModules.replace( re, "</td><td bgcolor='#c0c0c0' align='center' width=135>" );
+                    strModules = strModules.replace( re, "</td><td bgcolor='#c0c0c0' align='center' width=135>" );
+                    strModules += "</td>";
+                    UsedModuleCells += 4;
+                }
+
+                else if ( ( strCardName == "AN4.4" ) || ( strCardName == "QBRI" ) || ( strCardName == "HBD" ) || ( strCardName == "HBS" ) ||
+                          ( strCardName == "MC1.1" ) || ( strCardName == "MC1.2" ) )
+                {
+                    strModules = "<td bgcolor='#c0c0c0' colspan='2' align='center' width=270>" + G_arModules[ i ] + "</td>";
+                    UsedModuleCells += 2;
+                }
+
+                else if ( strCardName == "S-HUB" )
+                {
+                    strModules = "<td bgcolor='#c0c0c0' align='center' width=135>" + G_arModules[ i ];
+                    re = /"/g;
+                    strModules = strModules.replace( re, "" );
+                    re = /,/g;
+                    strModules = strModules.replace( re, "</td><td bgcolor='#c0c0c0' align='center' width=135>" );
+                    strModules += "</td>";
+                    UsedModuleCells += 3;
+                }
+            }
+
+            else
+            {
+                if ( ( strCardName == "CG4.1" ) || ( strCardName == "CU4.1" ) || ( strCardName == "CC4.0" ) || ( strCardName == "CC4.2" ) )
+                {
+                    for (var x=0 ; x<4 ; x++)
+                    {
+                        strModules += "<td bgcolor='#c0c0c0' align='center' width=135>-</td>";
+                    }
+                    UsedModuleCells = 4;
+                }
+            }
+
+            if ( ( i == G_ServerSlot ) && ( G_sgwVer != "" ) )
+            {
+                strModules += "<td bgcolor='#c0c0c0' colspan='2' align='center' width=270>" + G_sgwVer + "</td>"
+                UsedModuleCells += 2;
+            }
+
+            if ( UsedModuleCells < 4 ) strModules += "<td bgcolor='#c0c0c0' colspan='" + (4 - UsedModuleCells) + "' align='center' width=" + (135 * (4 - UsedModuleCells)) + ">-</td>"
+
+            strHTML += "<tr bgcolor='#dedeff'><td>"
+            if ( ( i == j ) || ( typeof G_arRealSlot[ j ] == 'undefined' ) )
+            {
+                strHTML += ((arRealSlot % 16 == 0) ? '-' : arRealSlot) + "</td><td>" + strCardName;
+            }
+            else
+            {
+                strHTML += "</td><td>";
+            }
+            strHTML += "</td><td>" + strVersion + "</td><td bgcolor='#ffffbb'>" + strSerial + "</td>";
+            strHTML += "<td align='center' " + (( i == G_ServerSlot ) ? "bgcolor='#c8c8ff'>" : ">") + strAddr + "</td>" + strModules + "</tr>";
+        }
+    }
+    strHTML += "</table>";
+    return strHTML;
+}
+
+function OnData( strMessage )
+{
+    var strCommand = new String( strMessage );
+    var arParam = strCommand.split( " " );
+    var strCmd = arParam[ 0 ];
+
+    if ( strCmd == ".GetCardInfoReply" )
+    {
+        var packStr = new PacketString( arParam[ 1 ] );
+        var strID = packStr.getSection( "I" );
+        if (strID == "989")
+        {
+            G_sgwVer = packStr.getSection( "g" );
+            var re = /[A-Za-z0-9\.]+;\w+;\w+;/;
+            G_sgwVer = G_sgwVer.replace( re, "signalgw-" );
+        }
+        return;
+    }
+
+    if ( arParam.length > 1 )
+    {
+        var packStr = new PacketString( arParam[ 1 ] );
+        var strID = packStr.getSection( "I" );
+        if ( (strID == "999") || (strID == "998") || (strID == "997") || (strID == "987") || (strID == "996") )
+        {
+            var strAddr;
+            var nSlot;
+            var strInfo;
+            var strInfoType;
+            if( strID == "987" )
+            {
+                StrInfo = packStr.getSection( "#" );
+                if ( StrInfo == "54" )
+                {
+                    strAddr = packStr.getSection( "@" );
+                    G_ServerSlot = parseInt( strAddr, 16 ) - 0x20;
+                }
+            }
+            else if( strID == "997" )
+            {
+                strAddr = packStr.getSection( "A" );
+                nSlot = parseInt( strAddr, 16 ) - 0x20;
+                strInfo = packStr.getSection( "i" );
+                if (strInfo) G_arModules[ nSlot ] = strInfo;
+            }
+            else
+            {
+                strAddr = packStr.getSection( "@" );
+                nSlot = parseInt( strAddr, 16 ) - 0x20;
+                if ( strID == "998" )
+                {
+                    StrInfo = packStr.getSection( "#" );
+                    if ( StrInfo == "54" )
+                    {
+                        strInfo = packStr.getSection( "g" );
+                        G_arSerials[ nSlot ] = strInfo;
+                    }
+                }
+                else
+                {
+                    StrInfo = packStr.getSection( "#" );
+                    if ( StrInfo == "85" )
+                    {
+                        strInfo = packStr.getSection( "g" );
+                        if ( strInfo != null )
+                        {
+                            var strSubAddr = packStr.getSection( "x" );
+                            if ( ( strSubAddr == null ) || ( parseInt( strSubAddr.charAt( 2 ), 10 ) < 2 ) )
+                            {
+                                G_arVersions[ nSlot ] = strInfo;
+                                strInfo = packStr.getSection( "i" );
+                                if ( ( strInfo != null ) && ( strInfo != "" ) )
+                                {
+                                    G_arRealSlot[ nSlot ] = parseInt( strInfo, 10 );
+                                }
+                                else
+                                {
+                                    G_arRealSlot[ nSlot ] = nSlot;
+                                }
+                            }
+                            else if ( strSubAddr.charAt( 2 ) == '2' )
+                            {
+                                strInfo = packStr.getSection( "g" );
+                                if (strInfo) G_arModules[ nSlot ] = strInfo;
+                            }
+                        }
+                    }
+                }
+            }
+
+            var strHTML = buildInfoTable();
+            //alert( strHTML );
+            g_strTableHTML = strHTML;
+
+            return;
+        }
+    }
+
+    if ( arParam[0] == "GWConfigInfo" )
+    {
+        var packStr = new PacketString( arParam[1] );
+        G_configInfo.processConfigInfo( packStr );
+    }
+}
+
+function sendPacket()
+{
+    var strCardAddr     = document.getElementById("I2CDest").value;
+    var strOpCode       = document.getElementById("Opcode").value;
+    var strPackStr      = document.getElementById("PackStr").value;
+
+    var historyObject = new Object();
+    historyObject.m_strCardAddr = strCardAddr;
+    historyObject.m_strOpCode = strOpCode;
+    historyObject.m_strPackStr = strPackStr;
+    G_arHistory.push( historyObject );
+    G_nLast = G_arHistory.length-1;
+
+    var strCommand = "SendGenericPacket ";
+    strCommand += strOpCode;
+    strCommand += ":/A";
+    strCommand += strCardAddr;
+    strCommand += strPackStr;
+
+    SendCommand( strCommand );
+    document.getElementById("DIV_Reply").innerHTML = "Command sent, waiting for reply...";
+}
+
+function clickIt( obj, strFile, bPressed, nDebug )
+{
+    obj.bPressed = bPressed;
+    var str = 'document.all.' + obj.name + '.src = "' + strFile + '"';
+    //if (nDebug==1) alert(str);
+    eval( str );
+}
+
+
+String.prototype.repeat = function(n) {
+    return new Array(1 + n).join(this);
+}
+
+function extendWarranty()
+{
+    document.getElementById("idStatus").innerHTML = "Reading configuration...";
+    g_bWarrantyRequested = true;
+    cardDiag();
+}
+
+function sendWarrantyRequest()
+{
+    g_bWarrantyRequested = false;
+    document.getElementById( "DIV_TableInfo" ).innerHTML = g_strTableHTML;
+    var oTable = document.getElementById( "idInfoTable" );
+    var line = "";
+    //var strTable = "_".repeat(80);
+    
+    var line = "";
+    if (oTable)
+    {
+        var max = oTable.rows.length;
+        line = "";
+        for (var loop=1; loop<max; loop++)
+        {
+
+            var ctype  = oTable.rows[loop].cells[1].innerHTML;
+            var serial = oTable.rows[loop].cells[3].innerHTML;
+            if (line != "")
+            {
+                line += "_";
+            }
+            line += ctype + ":" + serial;
+        }
+    }
+
+    var obj = new Object;
+    obj.cards = line;
+    obj.table = g_strTableHTML;
+    var jsonConfig = JSON.stringify(obj)
+    //alert( jsonConfig );
+    var b64 = new Base64();
+    var encLine = b64.encode64(jsonConfig);
+    //var decLine = encodeStr(encLine);
+    var oDiv = document.getElementById( "idConfig" );
+    oDiv.value = encLine;
+    select_all(oDiv);
+    var strMsg = "<font color='green'>";
+    strMsg += "Configuratiion successfully copied to clipboard.";
+    strMsg += " Please paste this information when submitting a ticket.</font>";
+    document.getElementById("idStatus").innerHTML = strMsg;
+}
+
+function select_all(obj)
+{
+  var text_val=eval(obj);
+  text_val.focus();
+  text_val.select();
+  if (!document.all) return; // IE only
+  r = text_val.createTextRange();
+  r.execCommand("copy");
+}
+
+</script>    
+</script>
+<font face="Arial">
+<table><tr><td><a href='javascript:extendWarranty()'>Get System Configuration</a></td>
+<td id="idCountDown"></td>
+<td id="idProgress"></td>
+</tr></table>
+
+<div style="display:none;visibility:hidden;" id="DIV_TableInfo" style=""></div>
+<textarea id="idConfig" style="width:100%; height:300px; border-style:solid; border-width:thin">
+</textarea>
+<div id="idStatus"></div>
+</font>
+</body>
+</html>

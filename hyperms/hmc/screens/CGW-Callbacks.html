@@ -1,0 +1,336 @@
+<HTML>
+<HEAD><TITLE>Cellular Gateways - Configuration</TITLE></HEAD>
+<STYLE type=text/css>TABLE {
+	BORDER-RIGHT: #000000 1px solid; BORDER-TOP: #000000 1px solid; BORDER-LEFT: #000000 1px solid; BORDER-BOTTOM: #000000 1px solid; border-spacing: 0px;
+}
+TD {
+	PADDING-RIGHT: 0.5em; PADDING-LEFT: 0.5em; FONT-SIZE: 10pt; PADDING-BOTTOM: 2px; PADDING-TOP: 2px; FONT-FAMILY: Arial, Helvetica, sans-serif; WHITE-SPACE: nowrap
+}
+</STYLE>
+<SCRIPT language=javascript src="../utils/utilfuncs.js"></SCRIPT>
+<SCRIPT language=javascript src="../utils/alloc_logic.js"></SCRIPT>
+<SCRIPT>
+// Received command from applet
+var G_bSaving = 0;
+var G_arVPNGroups = new Array();
+
+function init()
+{
+	parent.frames[0].SendCommand( "VPNGroups /I345" );
+}
+
+var G_strLastSelectedCard;
+var G_nCallbackInfoTimerID;
+
+function onSelectCard( strCard, strCardType )
+{
+    var nSlot = G_configInfo.calcSlotNumber( strCard );
+    G_strLastSelectedCard = strCard;
+    getInfo( strCard );
+    document.getElementById("update_settings").innerHTML = getSelCardText( nSlot, strCardType );
+}
+
+function showSave( nIndex )
+{
+    /*
+    if ( document.getElementById("DIV_SaveConfig").innerHTML == "Saving configuration..." )
+    {
+        return;
+    }
+    */
+	var strLogicalAddr = new String( G_configInfo.getMatrixAllocations( G_strLastSelectedCard )[ nIndex ] );
+	var arAddrChannel = strLogicalAddr.split( "." );
+	if ( arAddrChannel[ 0 ] ==  G_strLastSelectedCard )
+	{
+		// 1st and 2nd leg are on the same card.
+		// flip the disable state of the second leg
+		var nModuleIndex = parseInt( arAddrChannel[ 1 ] ) - 1;
+        var strID = "p" + nModuleIndex;
+		var objCheck = document.getElementById( strID );
+		objCheck.disabled = !objCheck.disabled;
+	}
+	
+    var strSave = utils_getButtonHTML( "saveCallbackConfig()", "SaveSettings.jpg" );
+    document.getElementById("DIV_SaveConfig").innerHTML = strSave;
+}
+
+function saveCallbackConfig()
+{
+    var strCommand = "SetCallbackData /A";
+    strCommand += G_strLastSelectedCard;
+    strCommand += "/I23/G";
+
+	var strGroups = "";
+	
+    for (var i=0; i<4; i++)
+    {
+        var strID = "p" + i;
+		var strChecked;
+		var objCheck = document.getElementById(strID);
+
+        var strID2 = "g" + i;
+		var objGroup = document.getElementById(strID2);
+
+		if (objCheck == null)
+		{
+			strChecked = "";
+		}
+		else
+		if ( objCheck.checked )
+		{
+			// This will take both enabled and disabled checked boxes
+			var strSelValue = objGroup.options[objGroup.selectedIndex].text;
+			strGroups += strSelValue;
+			strChecked = "1";
+		}
+		else
+		{
+			// This will take enabled unchecked boxes
+			strChecked = "0";
+		}
+		
+        strCommand += strChecked;
+		
+        if (i != 3)
+        {
+			strGroups	+= ",";
+            strCommand	+= ",";
+        }
+    }
+
+	strCommand += "/V" + strGroups;
+	G_bSaving = 1;
+	//alert( strCommand );
+	//return;
+    parent.frames[0].SendCommand( strCommand );
+
+    document.getElementById("DIV_SaveConfig").innerHTML = "Saving configuration...";
+}
+
+function OnData( strMessage )
+{
+    var strCommand = new String( strMessage );
+    var strParam = strCommand.split( " " );
+    var strSection;
+    
+    var packStr = new PacketString( strParam[1] );
+    
+    switch ( strParam[0] )
+    {
+        case "VPNGroupsReply":
+        {
+			var strGroups = packStr.getSection( "g" );
+			if ( strGroups != "" )
+			{
+				G_arVPNGroups = strGroups.split( "," );
+			}
+
+			parent.frames[0].SendCommand( "GetGWConfig" );
+			break;
+		}
+		
+        case "GWConfigInfo":
+        {
+			var objSelect = G_configInfo.getSelectCardHTML( packStr, "CG4.0,CC4.0,CT4.1,CU4.1,CC4.2", "Select cellular card", "onSelectCard" );
+          var strHTML = objSelect.m_strHTML;
+			var strSelCard = objSelect.m_strSelCard;
+			var strSelCardType = objSelect.m_strSelCardType;
+          document.getElementById("selectcard").innerHTML = strHTML;
+          if ( strSelCard != null)
+          {
+            onSelectCard( strSelCard, strSelCardType );
+          }
+          break;
+        }
+        
+        case "GWError":
+        {
+            document.getElementById("DIV_SaveConfig").innerHTML = "Error saving configuration.";
+            break;
+        }
+
+        case "CallbackReply":
+        {
+            clearTimeout(G_nCallbackInfoTimerID);
+            var strInfo		= packStr.getSection( "g" );
+            var arParam		= strInfo.split( "," );
+            var strGroups	= packStr.getSection( "v" );
+            var arGroups	= strGroups.split( "," );
+            var strApps		= packStr.getSection( "a" );
+            var arApps		= strApps.split( "," );
+			
+			//alert( "strInfo=" + strInfo + "strGroups=" + strGroups );
+            displayCallbacksTable( arParam, arGroups, arApps ); 
+			
+			if ( G_bSaving == 1 )
+			{
+				G_bSaving = 0;
+				document.getElementById("DIV_SaveConfig").innerHTML = "Configuration saved.";
+			}
+        }
+        
+        default:
+        {
+            // Send this to TCPServer log file ? internal log file ?
+            //alert( "Got unknown message:" + strMessage );
+            break;
+        }
+    }
+}
+
+function displayCallbacksTable( arParam, arGroups, arApps )
+{
+    var strHTML = "<table>";
+    strHTML += "<tr bgcolor='#f0f0f0'><td>Module</td>";
+	strHTML += "<td width='90'>Set 1st Leg</td>";
+	strHTML += "<td width='90'>Status</td>";
+	strHTML += "<td width='90'>Group</td>";
+	strHTML += "<td width='90'>2nd Leg</td></tr>";	
+	
+    for (var i=0; i<arParam.length; i++)
+    {
+        strHTML += "<tr><td>Module " + (i+1) + "</td>";
+		
+		if ( arParam[ i ] == "" )
+		{
+			strHTML += "<td align='center'>---";
+			strHTML += "</td>";
+			strHTML += "<td>";
+			strHTML += "Unmapped.";
+			strHTML += "</td>";
+			strHTML += "<td align='center'>---";
+			strHTML += "</td>";
+			
+			strHTML += "<td align='center'>---";
+			strHTML += "</td>";
+			strHTML += "</tr>";
+			continue;
+		}
+
+		var strLogicalAddr = new String( G_configInfo.getMatrixAllocations( G_strLastSelectedCard )[ i ] );
+		var arAddrChannel = strLogicalAddr.split( "." );		
+		var strLeg2 = G_configInfo.getChannelText( arAddrChannel );
+
+		if ( arParam[ i ] == "1" )
+		{
+			strHTML += "<td>";
+			strHTML += "<INPUT TYPE=CHECKBOX CHECKED DISABLED id='p" + i + "'>";
+			strHTML += "</td>";
+			strHTML += "<td>";
+			strHTML += "Allocated.";
+			strHTML += "</td>";
+			strHTML += "<td>";
+			strHTML += '<select id="g' + i + '" disabled>';
+			strHTML += 	'<option>' + arGroups[ i ] + '</option>';
+			
+			// Add this so the disabled combo will be the same width as enabled the combos
+			for (var j=0; j < G_arVPNGroups.length; j++)
+			{
+				strHTML += 	'<option>' + G_arVPNGroups[ j ] + '</option>';
+			}
+			strHTML += "</select>";
+			
+			strHTML += "</td>";
+			
+			strHTML += "<td>";
+			strHTML += strLeg2;
+			strHTML += "</td>";
+		}
+		else
+		if ( arParam[ i ] == "0" )
+		{
+			if ( arApps[ i ] != "Callback Leg1" && arApps[ i ] != "Callback Leg2" && arApps[ i ] != "" )
+			{
+				// Not set for callback, but allready allocated
+				// to a different application
+				strHTML += "<td align='center'>---";
+				strHTML += "</td>";
+				strHTML += "<td>";
+				strHTML += "Used for " + arApps[ i ];
+				strHTML += "</td>";
+				strHTML += "<td align='center'>---";
+				strHTML += "</td>";
+				
+				strHTML += "<td align='center'>---";
+				strHTML += "</td>";
+				strHTML += "</tr>";
+				continue;
+			}
+			
+			strHTML += "<td>";
+			strHTML += "<INPUT TYPE=CHECKBOX id='p" + i + "' onClick='showSave( " + i + ");'>";
+			strHTML += "</td>";
+			strHTML += "<td>";
+			strHTML += "Free.";
+			strHTML += "</td>";
+			strHTML += "<td>";
+			strHTML += '<select id="g' + i + '">';
+			strHTML += 	'<option>General</option>';
+			for (var j=0; j < G_arVPNGroups.length; j++)
+			{
+				strHTML += 	'<option>' + G_arVPNGroups[ j ] + '</option>';
+			}
+			strHTML += '</select>';
+			strHTML += "</td>";
+			
+			strHTML += "<td>";
+			strHTML += strLeg2;
+			strHTML += "</td>";
+		}
+		else
+		if ( arParam[ i ] == "2" )
+		{
+			strHTML += "<td>";
+			strHTML += "<INPUT TYPE=CHECKBOX CHECKED DISABLED id='p" + i + "'>";
+			strHTML += "</td>";
+			strHTML += "<td>";
+			strHTML += "Used for leg 2.";
+			strHTML += "</td>";
+			strHTML += "<td>";
+			strHTML += "</td>";
+			
+			strHTML += "<td>";
+			strHTML += strLeg2;
+			strHTML += "</td>";
+		}
+		
+        strHTML += "</tr>";
+    }
+    
+    strHTML += "</table>";
+    
+    document.getElementById("DIV_CellCallbacks").innerHTML = strHTML;
+}
+
+function getInfo( strAddress )
+{
+    var strCommand = "GetCallbackData /A";
+    strCommand += strAddress;
+    strCommand += "/I27";
+    parent.frames[0].SendCommand( strCommand );
+    G_nCallbackInfoTimerID = setTimeout("getInfo('" + strAddress + "')",4000);
+}
+</SCRIPT>
+
+<BODY onLoad="init()" bgcolor="white" onselectstart="return false;" ondragstart="return false;">
+<font size=4 face="Arial">Cellular Card Callback Resources</font>
+<hr>
+
+<font face=Arial size=2>
+<div id="selectcard"></div>
+
+<div id="update_settings"></div>
+<br>
+
+
+<div id="DIV_CellCallbacks">
+</div>
+
+<br>
+<div id="DIV_SaveConfig">
+</div>
+
+</font>
+
+</BODY>
+</HTML>

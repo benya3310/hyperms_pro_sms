@@ -1,0 +1,202 @@
+<HTML>
+<HEAD>
+	<link type="text/css" href="../default.css" rel="stylesheet">
+	<TITLE>BRI Card - Fixed CLI programming</TITLE>
+</HEAD>
+<SCRIPT language=javascript src="../utils/utilfuncs.js"></SCRIPT>
+<SCRIPT language=javascript src="../utils/alloc_logic.js"></SCRIPT>
+<SCRIPT>
+
+var G_strLastSelectedCard;
+var G_nCLIValuesTimerID;
+
+/**********************************************************************************************/
+function init()
+/**********************************************************************************************/
+{
+    getGWConfig();
+}
+
+/**********************************************************************************************/
+function getGWConfig()
+/**********************************************************************************************/
+{
+    parent.frames[0].SendCommand( "GetGWConfig" );
+}
+
+/**********************************************************************************************/
+function onSelectCard( strCard, strCardType )
+/**********************************************************************************************/
+{
+    var nSlot = G_configInfo.calcSlotNumber( strCard );
+    G_strLastSelectedCard = strCard;
+	clearGUI();
+    clearTimeout(G_nCLIValuesTimerID);
+    getInfo( strCard, 0 );
+    document.getElementById("update_settings").innerHTML = getSelCardText( nSlot, strCardType );
+}
+
+/**********************************************************************************************/
+function showSave()
+/**********************************************************************************************/
+{
+    var strSave = utils_getButtonHTML( "saveCLIValuesConfig()", "SaveSettings.jpg" );
+    document.getElementById("DIV_SaveConfig").innerHTML = strSave;
+}
+
+/**********************************************************************************************/
+function saveCLIValuesConfig()
+/**********************************************************************************************/
+{
+    var strCommand = "AnalogSetCLI /A";
+    strCommand += G_strLastSelectedCard;
+    strCommand += "/x1/I28/G";
+
+    for (var i=0; i<8; i++)
+    {
+        var strID = "p" + i; 
+		strCommand += document.getElementById(strID).value;	
+        if (i != 7)
+        {
+            strCommand += ",";
+        }
+    }
+
+    parent.frames[0].SendCommand( strCommand );
+
+    document.getElementById("DIV_SaveConfig").innerHTML = "Saving configuration...";
+}
+
+/**********************************************************************************************/
+function OnData( strMessage )
+/**********************************************************************************************/
+{
+    var strCommand = new String( strMessage );
+    var strParam = strCommand.split( " " );
+    var strSection;
+    
+    var packStr = new PacketString( strParam[1] );
+    
+    switch ( strParam[0] )
+    {
+        case "GWConfigInfo":
+        {
+			var objSelect = G_configInfo.getSelectCardHTML( packStr, "QBRI", "Select BRI card", "onSelectCard" );			
+            var strHTML = objSelect.m_strHTML;
+            var strSelCard = objSelect.m_strSelCard;
+            var strSelCardType = objSelect.m_strSelCardType;
+            document.getElementById("selectcard").innerHTML = strHTML;
+            if ( strSelCard != null )
+            {
+                onSelectCard( strSelCard, strSelCardType );
+            }
+            break;
+        }
+        
+        case "Ack":
+        {
+            document.getElementById("DIV_SaveConfig").innerHTML = "Configuration saved.";
+            break;
+        }
+        
+        case "GWError":
+        {
+            clearTimeout(G_nCLIValuesTimerID);
+			var strErrMsg = "Error communicating with card in slot " + G_configInfo.calcSlotNumber( G_strLastSelectedCard );
+            document.getElementById("DIV_SaveConfig").innerHTML = strErrMsg;
+            break;
+        }
+
+        case "AnalogInfoCLI":
+        {
+            clearTimeout(G_nCLIValuesTimerID);
+            var strInfo = packStr.getSection( "g" );
+            var arParam = strInfo.split( "," );
+            displayTable( arParam ); 
+        }
+        
+        default:
+        {
+            break;
+        }
+    }
+}
+
+/**********************************************************************************************/
+function displayTable( arParam )
+/**********************************************************************************************/
+{
+	var strChannel;
+    var strHTML = "<table>";
+	document.getElementById("helpSection").className = "visibile";
+
+    for (var i=0; i<arParam.length; i++)
+    {
+        strChannel = "Port " + Math.ceil((i + 1) / 2) + " - Ch." + ((i % 2) + 1);
+
+        strHTML += "<tr><td width=90>" + strChannel + "</td>";
+        strHTML += "<td><INPUT TYPE=TEXT size=14 name='p" + i;
+        strHTML += "' value='" + arParam[ i ] + "' onFocus='showSave();'></td></tr>";
+		if (i % 2)
+		{
+			strHTML += "<tr height=10><td></td></tr>";
+		}
+    }
+    
+    strHTML += "</table>";
+    document.getElementById("DIV_Values").innerHTML = strHTML;
+    document.getElementById("helpSection").style.visibility = "visible";
+}
+
+/**********************************************************************************************/
+function getInfo( strAddress, nIsRetry )
+/**********************************************************************************************/
+{
+    var strCommand = "AnalogSetCLI /A";
+    strCommand += strAddress;
+    strCommand += "/x1/I37";
+    parent.frames[0].SendCommand( strCommand );
+	if ( nIsRetry == 0 )
+	{
+		G_nCLIValuesTimerID = setTimeout("getInfo('" + strAddress + "', 1)",6000);
+	}
+}
+
+/**********************************************************************************************/
+function clearGUI()
+/**********************************************************************************************/
+{
+    document.getElementById("update_settings").innerHTML    = "";
+	document.getElementById("DIV_Values").innerHTML         = "";
+	document.getElementById("DIV_SaveConfig").innerHTML     = "";
+    document.getElementById("helpSection").style.visibility = "hidden";
+}
+
+</SCRIPT>
+
+<BODY onLoad="init()" bgcolor="white" ondragstart="return false;">
+<font size=4 face="Arial">BRI Fixed CLI Values</font>
+<hr>
+
+<font face=Arial size=2>
+<div id="selectcard"></div>
+
+<div id="update_settings"></div>
+<br>
+
+<div id="DIV_Values">
+</div>
+
+<br>
+<div id="DIV_SaveConfig">
+</div>
+
+</font>
+<div id="helpSection" style="visibility: hidden;">
+	<div class="title">Fixed CLI values</div>
+	These values are used as the calling party numbers on outbound calls from the HyperGateway through the BRI ports.<br>
+	Leave empty for the paired resource's original calling party number to be used.<br />
+</div>
+
+</BODY>
+</HTML>

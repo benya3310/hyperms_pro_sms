@@ -1,0 +1,557 @@
+<HTML>
+<HEAD><TITLE>Cellular Cards - Network Parameters</TITLE></HEAD>
+<link type="text/css" href="../default.css" rel="stylesheet">
+<SCRIPT language=javascript src="../utils/utilfuncs.js"></SCRIPT>
+<SCRIPT language=javascript src="../utils/alloc_logic.js"></SCRIPT>
+<SCRIPT>
+
+var G_strLastSelectedCard;
+var G_strFeatureDesc    = new Array();
+var G_arFeatureValNames = new Array();
+var G_arFeatureTagVal   = new Array();
+var G_arFeatureRdTagVal = new Array();
+var G_arFeatureWrTagVal = new Array();
+
+G_strFeatureDesc[1]    = "Band Selection";
+G_arFeatureRdTagVal[1] = "g"
+G_arFeatureWrTagVal[1] = "G"
+G_arFeatureValNames[1] = new Array();
+G_arFeatureValNames[1][ "0" ] = "850 MHz";
+G_arFeatureValNames[1][ "1" ] = "900E MHz";
+G_arFeatureValNames[1][ "2" ] = "1800 MHz";
+G_arFeatureValNames[1][ "3" ] = "1900 MHz";
+G_arFeatureValNames[1][ "4" ] = "850 / 1900 MHz";
+G_arFeatureValNames[1][ "5" ] = "900E / 1800 MHz";
+G_arFeatureValNames[1][ "6" ] = "900E / 1900 MHz";
+G_arFeatureValNames[1][ "7" ] = "Quad Band";
+
+G_strFeatureDesc[2]    = "Voice Rate Selection";
+G_arFeatureRdTagVal[2] = "i"
+G_arFeatureWrTagVal[2] = "i"
+G_arFeatureValNames[2] = new Array();
+G_arFeatureValNames[2][  "0" ] = "FR";
+G_arFeatureValNames[2][  "1" ] = "EFR -> FR";
+G_arFeatureValNames[2][  "2" ] = "HR -> FR";
+G_arFeatureValNames[2][  "3" ] = "FR -> HR";
+G_arFeatureValNames[2][  "4" ] = "HR -> EFR";
+G_arFeatureValNames[2][  "5" ] = "EFR -> HR";
+G_arFeatureValNames[2][  "6" ] = "AMR-FR -> EFR, AMR-HR";
+G_arFeatureValNames[2][  "7" ] = "AMR-FR -> EFR, AMR-HR, HR";
+G_arFeatureValNames[2][  "8" ] = "AMR-HR -> HR, AMR-FR, EFR";
+G_arFeatureValNames[2][  "9" ] = "AMR-HR -> AMR-FR, EFR";
+G_arFeatureValNames[2][ "10" ] = "AMR-HR -> AMR-FR, FR";
+G_arFeatureValNames[2][ "11" ] = "AMR-HR -> HR, AMR-FR";
+G_arFeatureValNames[2][ "12" ] = "AMR-FR -> AMR-HR";
+G_arFeatureValNames[2][ "13" ] = "AMR-FR -> FR, AMR-HR";
+G_arFeatureValNames[2][ "14" ] = "AMR-FR -> FR, AMR-HR, HR";
+
+G_strFeatureDesc[3]    = "Network Type Selection";
+G_arFeatureRdTagVal[3] = "P"
+G_arFeatureWrTagVal[3] = "P"
+G_arFeatureValNames[3] = new Array();
+G_arFeatureValNames[3][ "0" ] = "GSM";
+G_arFeatureValNames[3][ "1" ] = "UMTS";
+G_arFeatureValNames[3][ "2" ] = "GSM & UMTS";
+
+var G_arFeatureValue = new Array();
+var G_arFeatureOpt   = new Array();
+var G_nTimerID;
+
+var G_arAddresses	   = new Array();
+var G_arTypes		   = new Array();
+var G_nSelectedMethod        = 0;
+var G_nCurrent				 = 0;
+
+var G_nAllCardsInfoTimerID   = 0;
+var G_nCurrentCardInfo       = 0;
+var G_bAllCardSupport        = true;
+var G_bInAllCardsCheckLoop   = true;
+/**********************************************************************************************/
+function init()
+/**********************************************************************************************/
+{
+	
+    parent.frames[0].SendCommand( "GetGWConfig" );
+	showHelp();
+	
+}
+
+/**********************************************************************************************/
+function onSelectCard( strCard, strCardType )
+/**********************************************************************************************/
+{
+    var nSlot = G_configInfo.calcSlotNumber( strCard );
+    G_strLastSelectedCard = strCard;
+	cleanDivs();
+	if ( G_bInAllCardsCheckLoop )
+	{	
+		document.getElementById("DIV_SaveConfig").innerHTML = "Processing cards information,please wait...";
+		getAllCardsInfo();
+	}
+	else
+	{	
+		getInfo();
+	}
+		
+    document.getElementById("update_settings").innerHTML = getSelCardText( nSlot, strCardType );
+}
+
+/**********************************************************************************************/
+function showSave()
+/**********************************************************************************************/
+{
+    var strSave = utils_getButtonHTML( "saveConfig()", "SaveSettings.jpg" );
+    document.getElementById("DIV_SaveConfig").innerHTML = strSave;
+	if (document.getElementById( "val3_1" ) != null)
+	{
+		document.getElementById("alert").innerHTML = "<font face=Arial size=2 color=red>Modules with modified settings will be reset once these are applied !<br><br></font>";
+	}
+	else
+	{
+		document.getElementById("alert").innerHTML = "<font face=Arial size=2 color=red>The settings below will become active only after saving changes to the system !<br><br></font>";
+	}
+}
+/**********************************************************************************************/
+function hideSave()
+/**********************************************************************************************/
+{
+    document.getElementById("DIV_SaveConfig").innerHTML = "";
+}
+/**********************************************************************************************/
+function setSaveAckTimer()
+/**********************************************************************************************/
+{
+	document.getElementById("DIV_SaveConfig").innerHTML = "Error saving, please try again.";
+}
+
+/**********************************************************************************************/
+function getInfo()
+/**********************************************************************************************/
+{
+    var strCommand = "SendGenericPacket 7d:/A";
+    strCommand += G_strLastSelectedCard;
+    strCommand += "/I344/Q";
+    parent.frames[0].SendCommand( strCommand );
+	G_nTimerID = setTimeout( getInfo , 4000 );
+}
+/**********************************************************************************************/
+function getAllCardsInfo()
+/**********************************************************************************************/
+{
+	if ( ( G_nCurrentCardInfo == G_arAddresses.length ) || ( G_bAllCardSupport == false ) )
+    {
+		
+        clearTimeout( G_nAllCardsInfoTimerID );				
+		G_bInAllCardsCheckLoop = false;
+		document.getElementById("DIV_SaveConfig").innerHTML = "";
+		getInfo();		
+		showMethodTable(0);
+        return;
+    }    
+	var strCommand = "SendGenericPacket 7d:/A";
+    strCommand += G_arAddresses[G_nCurrentCardInfo];;
+    strCommand += "/I770/Q";
+    parent.frames[0].SendCommand( strCommand );
+	document.getElementById("DIV_SaveConfig").innerHTML += "..";
+    G_nCurrentCardInfo++;
+    G_nAllCardsInfoTimerID = setTimeout("getAllCardsInfo()",1500);
+    
+}
+/**********************************************************************************************/
+function saveConfig()
+/**********************************************************************************************/
+{	
+	var obj, chnl;
+	var strCmdParams = "";
+	clearTimeout( G_nTimerID );
+	G_nTimerID = setTimeout( setSaveAckTimer , 5000 );
+
+	var strCommand = "SendGenericPacket 7d:/A" + G_strLastSelectedCard + "/I345";
+	
+	//set for one card
+	for ( var nFeature in G_arFeatureWrTagVal )
+	{
+		if ( G_nSelectedMethod == 0)
+		{
+			obj = document.getElementById( "val" + nFeature + "_1" );			
+			if ( ( obj != null ) || ( nFeature == 1 ) )
+			{
+				strCmdParams += "/";
+				strCmdParams += G_arFeatureWrTagVal[ nFeature ];
+				if ( obj != null)
+				{
+					for ( chnl = 1 ; chnl <= 4 ; chnl++ )
+					{
+						strCmdParams += document.getElementById( "val" + nFeature + "_" + chnl ).value;
+						if ( chnl < 4 ) strCmdParams += ",";
+					}
+				}
+			}
+		}
+		else
+		{
+			obj = document.getElementById( "val" + nFeature + "_all" );			
+			if ( ( obj != null ) || ( nFeature == 1 ) )
+			{
+				strCmdParams += "/";
+				strCmdParams += G_arFeatureWrTagVal[ nFeature ];
+				if ( obj != null )
+				{
+					var featureVal = document.getElementById( "val" + nFeature + "_all" ).value;
+					var allFeatureVal = featureVal + "," + featureVal + "," + featureVal + "," + featureVal;
+					strCmdParams += allFeatureVal;
+				}
+			}
+		}
+	}		
+	
+	//send
+	if ( strCmdParams != "" )
+	{
+		if ( G_nSelectedMethod != 2)
+		{
+			document.getElementById("DIV_SaveConfig").innerHTML = "Saving configuration...";
+			parent.frames[0].SendCommand( strCommand + strCmdParams );
+		}
+		else
+		{
+			//start a loop or all cards...			
+			G_nCurrent = 0;
+			document.getElementById("DIV_SaveConfig").innerHTML = "";
+			setAllCards(strCmdParams);
+		}
+	}
+}
+/**********************************************************************************************/
+function setAllCards(strCmdParams)
+/**********************************************************************************************/
+{		
+	if ( G_nCurrent == G_arAddresses.length ) 
+    {		
+        clearTimeout( G_nCG4MonitorTimerID );		
+		document.getElementById("DIV_SaveConfig").innerHTML = "Configuration Saved for all Cards (" + G_nCurrent + ") Successfully!";        
+		return;
+    }    
+	var strCommand = "SendGenericPacket 7d:";
+	strCommand += "/A" + G_arAddresses[G_nCurrent];
+	strCommand += "/I" + (10 + G_nCurrent);
+	strCommand += strCmdParams;
+	
+    parent.frames[0].SendCommand( strCommand );
+	document.getElementById("DIV_SaveConfig").innerHTML = "Updating Card#" + (G_nCurrent+1);
+    G_nCurrent++;
+    G_nCG4MonitorTimerID = setTimeout("setAllCards('"+strCmdParams+"')",1500);
+}
+/**********************************************************************************************/
+function OnData( strMessage )
+/**********************************************************************************************/
+{   
+    var strCommand = new String( strMessage );
+    var strParam = strCommand.split( " " );
+    var strSection;
+    
+    var packStr = new PacketString( strParam[1] );
+    
+    switch ( strParam[0] )
+    {
+        case "GWConfigInfo":
+        {
+			var objSelect = G_configInfo.getSelectCardHTML( packStr, "CG4.0,CU4.1", "Select cellular card", "onSelectCard" );
+            var strHTML = objSelect.m_strHTML;
+			var strSelCard = objSelect.m_strSelCard;
+			var strSelCardType = objSelect.m_strSelCardType;
+            document.getElementById("selectcard").innerHTML = strHTML;
+			//get all cards addresses for global volume set
+		   FillCardType( "CG4.0" );
+		   FillCardType( "CU4.1" );
+		 
+            if ( strSelCard != null )
+            {
+                onSelectCard( strSelCard, strSelCardType );
+            }			
+            break;
+        }
+        
+        case "Ack":
+        {
+			clearTimeout( G_nTimerID );
+			if ( G_nSelectedMethod != 2 )
+			{	
+				document.getElementById("DIV_SaveConfig").innerHTML = "Configuration saved.";
+				//move to single mode and show card's values
+				G_nSelectedMethod = 0;
+				getInfo( G_strLastSelectedCard );
+				showMethodTable(0);	
+			}
+			break;
+        }
+        
+        case "GWError":
+        {
+			clearTimeout( G_nTimerID );
+			if ( packStr.getSection( "I" ) == "345" )
+			{
+				document.getElementById("DIV_SaveConfig").innerHTML = "Error saving configuration.";
+			}
+			else
+			{
+				if ( packStr.getSection( "I" ) == "770" )
+				{					
+					G_bAllCardSupport = false;					
+				}
+				else
+				{
+					cleanDivs();
+					document.getElementById("DIV_Values").innerHTML = "<table><tr><td>These features are not supported by this card.</td></tr></table>";
+				}
+			}
+			break;
+        }
+
+        case "CardSettingsReply":
+        {			
+			if ( G_bInAllCardsCheckLoop )
+			{	
+				break;
+			}
+			clearTimeout( G_nTimerID );
+			for (var nFeatureNum in G_arFeatureRdTagVal)
+			{
+				var strValue = packStr.getSection( G_arFeatureRdTagVal[ nFeatureNum ] );
+				var arTempStrs  = new Array;
+				G_arFeatureValue[ nFeatureNum ] = new Array;
+				G_arFeatureOpt[ nFeatureNum ]   = new Array;
+				if ( ( strValue != null ) && ( strValue != "" ) )
+				{
+					arTempStrs = strValue.split( "(" );
+					if ( arTempStrs[1] == null )
+					{
+						G_arFeatureValue[ nFeatureNum ] = strValue.split ( "," );
+					}
+					else
+					{
+						G_arFeatureValue[ nFeatureNum ] =  arTempStrs[ 0 ].split ( "," );
+						re = /\)/;
+						G_arFeatureOpt[ nFeatureNum ]   = (arTempStrs[ 1 ].replace( re, "" )).split ( "," );
+						var arTempIdx = G_arFeatureOpt[ nFeatureNum ].length;
+						for (var arOptIdx in G_arFeatureOpt[ nFeatureNum ])
+						{
+							var arSplitOpt = G_arFeatureOpt[ nFeatureNum ][ arOptIdx ].split ( "-" );
+							if ( arSplitOpt[ 1 ] != null )
+							{
+								for (var arNewOptIdx = (parseInt(arSplitOpt[ 0 ]) + 1) ; arNewOptIdx <= parseInt(arSplitOpt[ 1 ]) ; arNewOptIdx++)
+								{
+									G_arFeatureOpt[ nFeatureNum ][ arTempIdx++ ] = arNewOptIdx.toString();
+								}
+								G_arFeatureOpt[ nFeatureNum ][ arOptIdx ] = arSplitOpt[ 0 ];
+							}
+						}
+					}
+				}
+				else
+				{
+					G_arFeatureValue[ nFeatureNum ][ 0 ] = "";
+				}
+            }
+			showTables();
+			break;   
+        }
+        
+        default:
+        {
+            break;
+        }
+    }
+}
+/**********************************************************************************************/
+function onSelectedMethod( nMethod )
+/**********************************************************************************************/
+{
+	G_nSelectedMethod = nMethod;
+	if ( G_arFeatureValue.length > 0 )
+	{	
+		document.getElementById("DIV_Values").innerHTML = "";
+		showTables();	
+		if ( nMethod >0 )
+			showSave();
+		else
+		{
+			hideSave();
+			getInfo( G_strLastSelectedCard );	
+		}
+	}
+}
+/**********************************************************************************************/
+function FillCardType( strType )
+/**********************************************************************************************/
+{
+	var arTypeAddr = G_configInfo.getCardTypeAddresses( strType );
+        
+	if ( typeof( arTypeAddr ) != 'undefined' )
+	{
+		for (var i=0; i<arTypeAddr.length; i++)
+		{
+			G_arTypes.push( strType );
+		}
+		G_arAddresses = G_arAddresses.concat( arTypeAddr );
+	}
+}
+/**********************************************************************************************/
+function sortCardsAddresses()
+/**********************************************************************************************/
+{
+	var nAddress = new Array();
+	for ( var i=0; i<G_arAddresses.length; i++ )
+	{
+		nAddress[i] = parseInt(G_arAddresses[i] , 16);
+	}
+	nAddress.sort();
+	for ( var i=0; i<nAddress.length; i++ )
+	{
+		G_arAddresses[i] = nAddress[i].toString(16);
+	}
+}
+/**********************************************************************************************/
+function showMethodTable( nChecked )
+/**********************************************************************************************/
+{
+	var checked = new Array;
+	for (var i=0; i<3; i++)
+	{
+		if ( nChecked == i )
+		{
+			checked[ i ] = "checked";
+		}
+		else
+		{
+			checked[ i ] = "";
+		}
+	}
+	strHTML = "<br><table width='400'>"; 
+	strHTML += "<tr bgcolor='#eeeeee'>";
+	strHTML += "<td><input type='radio' onClick='onSelectedMethod(0)' name='SetMethod' " + checked[0] + ">Module Settings</td>";
+	strHTML += "<td><input type='radio' onClick='onSelectedMethod(1)' name='SetMethod' " + checked[1] + ">Entire Card</td>";
+	if ( G_bAllCardSupport == true )
+		strHTML += "<td><input type='radio' onClick='onSelectedMethod(2)' name='SetMethod' " + checked[2] + ">Entire System</td>";
+	else
+		strHTML += "<td><input type='radio' onClick='onSelectedMethod(2)' name='SetMethod'  disabled='disabled' " + checked[2] + ">Entire System</td>";
+	strHTML += "</tr></table><br>";
+    document.getElementById("mode").innerHTML = strHTML;
+	
+}
+/**********************************************************************************************/
+function showTables()
+/**********************************************************************************************/
+{	
+	var strHTML = "";
+
+	for (var strKey in G_arFeatureRdTagVal)
+	{
+		if ( G_arFeatureValue[ strKey ][ 0 ] != "" ) 
+		{
+			if ( G_nSelectedMethod == 0 )
+			{
+				strHTML += DisplayTable( strKey );
+			}
+			else
+			{
+				strHTML += DisplayOneTable( strKey );
+			}
+				
+		}
+	}
+	document.getElementById("DIV_Values").innerHTML = strHTML;
+	
+}
+
+/**********************************************************************************************/
+function DisplayTable( nFeature )
+/**********************************************************************************************/
+{
+	var strHTML = "<br><tr><td><b>" + G_strFeatureDesc[ nFeature ] + "</b></td><td></td></tr><br></br>";
+	strHTML += "<tr><td><table border='0' bgcolor=white>";
+
+	for ( var chnl = 1 ; chnl <= 4 ; chnl++ )
+	{
+		strHTML += "<tr><td>Module " + chnl + "</td>"
+		strHTML += "<td><select onChange='showSave();' name='val" + nFeature + "_" + chnl + "'>";
+		for (var strKey in G_arFeatureOpt[ nFeature ])
+		{
+			strHTML += "<option value='" + G_arFeatureOpt[ nFeature ][ strKey ] + "' "
+			if ( G_arFeatureOpt[ nFeature ][ strKey ] == G_arFeatureValue[ nFeature ][ chnl - 1 ] )
+			{
+				strHTML += "selected ";
+			}
+			strHTML += ">" + G_arFeatureValNames[ nFeature ][ G_arFeatureOpt[ nFeature ][ strKey ] ] + "</option>";
+		}
+		strHTML += "</select></td></tr>"
+	}
+	strHTML += "</table></td></tr><br>";
+    return strHTML;
+}
+/**********************************************************************************************/
+function DisplayOneTable( nFeature )
+/**********************************************************************************************/
+{
+	var strHTML = "<br><tr><td><b>" + G_strFeatureDesc[ nFeature ] + "</b><br><br></td></tr>";
+	
+		strHTML += "<tr><td><select onChange='showSave();' name='val" + nFeature + "_all'>";
+		for (var strKey in G_arFeatureOpt[ nFeature ])
+		{
+			strHTML += "<option value='" + G_arFeatureOpt[ nFeature ][ strKey ] + "' "
+			if ( G_arFeatureOpt[ nFeature ][ strKey ] == G_arFeatureValue[ nFeature ][ 0 ] )
+			{
+				strHTML += "selected ";
+			}
+			strHTML += ">" + G_arFeatureValNames[ nFeature ][ G_arFeatureOpt[ nFeature ][ strKey ] ] + "</option>";
+		}
+		strHTML += "</select></td></tr>"
+	
+	strHTML += "<br><br>";
+    return strHTML;
+}
+/**********************************************************************************************/
+function cleanDivs()
+/**********************************************************************************************/
+{
+	document.getElementById("DIV_SaveConfig").innerHTML = "";
+	document.getElementById("DIV_Values").innerHTML = "";
+	document.getElementById("alert").innerHTML = "<br><br>";
+}
+/**********************************************************************************************/
+function showHelp()
+/**********************************************************************************************/
+{
+	var strHelpText = "";
+	strHelpText += "<div class='title'>Mobile Network Operators Codes List</div>";
+	strHelpText += "A list of mobile network operators (GSM / UMTS) sorted by countries is available <a href='http://en.wikipedia.org/wiki/Mobile_network_code#National_operators'";
+	strHelpText += "target='_blank'><b><font color='green'>here</font></b></a>.";
+	strHelpText += "The bands used by each operator are detailed on the list, and may be used as a reference in order to configure the above settings correctly.";
+    document.getElementById("helpSection").innerHTML = strHelpText;
+
+}
+</SCRIPT>
+
+<BODY onLoad="init()" bgcolor="white" ondragstart="return false;">
+<font size=4 face="Arial">Cellular Card Network Parameters</font>
+<hr>
+
+<font face=Arial size=2>
+
+<div id="selectcard"></div>
+<div id="alert"><br><br></div>
+<div id="update_settings"></div>
+
+<div id="mode"></div>
+<div id="DIV_Values" style="width:450px;overflow:auto;">
+</div>
+
+<div id="DIV_SaveConfig">
+</div>
+<br>
+<div id="helpSection"></div>
+
+</font>
+
+</BODY>
+</HTML>

@@ -1,0 +1,644 @@
+<html>
+<head>
+<STYLE type=text/css>TABLE {
+	BORDER-RIGHT: #000000 1px solid; BORDER-TOP: #000000 1px solid; BORDER-LEFT: #000000 1px solid; BORDER-BOTTOM: #000000 1px solid; border-spacing: 0px; cell-spacing: 0px
+}
+TD {
+	PADDING-RIGHT: 0.5em; PADDING-LEFT: 0.5em; FONT-SIZE: 10pt; PADDING-BOTTOM: 2px; PADDING-TOP: 2px; FONT-FAMILY: Arial, Helvetica, sans-serif; WHITE-SPACE: nowrap
+}
+</STYLE>
+<link name="cssDefault" rel="StyleSheet" type="text/css" href="../utils/slider/WidgetAPI/Sliders/css/default.css">
+<link type="text/css" href="../default.css" rel="stylesheet">
+<!-- BROWSER ABSTRACTION LAYER SETUP FOLLOWS -->
+<SCRIPT language=javascript src="../utils/alloc_logic.js"></SCRIPT>
+<SCRIPT language=javascript src="../utils/utilfuncs.js"></SCRIPT>
+<script language="javascript" src="../utils/slider/AbsLayers/BrowserAbstraction.js"></script>
+<script language="javascript" src="../utils/slider/AbsLayers/BrowserDetect.js"></script>
+<script language="javascript" src="../utils/slider/AbsLayers/BrowserAbstractionFactory.js"></script>
+<script>
+	var factory = new BrowserAbstractionFactory("../utils/slider/AbsLayers/");
+</script>
+<script language="javascript">
+	var BrowserLayer = factory.getAbstraction();
+	factory = null; // delete the reference to the BrowserAbstractionFactory
+</script>
+
+<!-- WIDGET API SETUP FOLLOWS -->
+<script language="javascript" src="../utils/slider/WidgetAPI/AbstractWidget.js"></script>
+<script language="javascript">
+	setWidgetPath("../utils/slider/WidgetAPI/");
+</script>
+<script language="javascript" src="../utils/slider/WidgetAPI/Sliders/Slider.js"></script>
+<title>Simple Widget Demo</title>
+</head>
+
+<SCRIPT language=javascript src="../utils/utilfuncs.js"></SCRIPT>
+
+<script language="javascript">
+<!--
+
+// The volume sliders are drawn according to the HTML layout. If the layout changes
+// they need to be redrawn. The HTML layout can change when the window is resized
+// therefore we catch the browser window resize event and refresh the volume slider
+// position when the window is resized.
+
+window.onresize = refreshSliderPos;
+
+var G_strLastCardType = "";
+
+var G_arAddresses	   = new Array();
+var G_arTypes		   = new Array();
+var G_nSelectedMethod        = 0;
+var G_nLastSelectedCard      = 0;
+var G_nLastSelectedCardType  = 0;
+var G_nCurrent				 = 0;
+// Define the array of cellular modules volume-in and volume-out sliders.
+var G_inVolumeSliders = new Array();
+var G_outVolumeSliders = new Array();
+var G_arVolumesIn = new Array();
+var G_arVolumesOut = new Array();
+
+var G_arEchos = new Array();
+var G_strLastSaved = "";
+// Total number of cellular modules per cellular card.
+var G_nTotal = 4;
+
+function onVolumeChange( obj )
+{
+    updateVolumes();
+}
+
+function init()
+{
+	for (var i=0; i<G_nTotal; i++)
+    {
+		if ( G_strLastCardType != "CT4.1" )
+		{
+			G_inVolumeSliders[ i ] = new Slider( BrowserLayer, "In", 8 );
+		}
+
+		if ( G_strLastCardType != "CC4.0" )
+		{
+			G_outVolumeSliders[ i ] = new Slider( BrowserLayer, "Out", 7 );
+		}
+    }
+
+    strHTML = "";
+    
+    for (var i=0; i<G_nTotal; i++)
+    {
+        
+		strHTML += "<table class='TableNoBorder'><tr><td>";
+		if (G_nTotal>1)
+			strHTML += "<b>Module " + (i+1) + "</b>:<br>";
+		else
+			strHTML += "<br>";
+		strHTML += "<table width=250 id='tbl" + i + "'>";
+        //strHTML += G_inVolumeSliders[i].getHTML();
+
+		if ( G_strLastCardType != "CT4.1" )
+		{
+			strHTML += G_inVolumeSliders[i].getHTML();
+		}
+		if ( G_strLastCardType != "CC4.0" )
+		{
+			strHTML += G_outVolumeSliders[i].getHTML();
+		}
+        strHTML += "</table><BR>";
+		strHTML += "</td><td valign='middle'>";
+		strHTML += "<table class='tableNoBorder'><tr><td colspan='3'><div id='echo"+ i + "'></div></td></tr></table>";
+		
+		strHTML += "</td></tr></table>";
+		//alert( strHTML );
+    }
+
+    document.getElementById("sliders").innerHTML = strHTML;
+
+    refreshSliderPos( 0 );
+}
+
+function updateEchosUI()
+{
+	//clear all fisrt
+	for(var i=0; i<G_nTotal; i++)	
+	{  
+		try{//might not exist
+			var div = document.getElementById("echo"+i);
+	    	div.innerHTML = "";
+		}
+		catch (e){}
+	}
+	
+	if ( G_arEchos.length < G_nTotal )
+	{			
+			return;		
+	}
+	for(var i=0; i<G_nTotal; i++)
+	{
+		
+		var div = document.getElementById("echo"+i);
+		//var strHTML = "Echo Canceller ";
+		var strEndHTML ="";		
+		var strColor = "";
+		if ( G_arEchos[i] == "-" )
+		{
+			strEndHTML += "DISABLED>";
+			strColor = "Gray";
+		} 
+		if ( G_arEchos[i] == "0" )
+			strEndHTML += ">";
+		if ( G_arEchos[i] == "1" )
+			strEndHTML += "CHECKED>";
+		
+		var strHTML =  "<font color='" + strColor + "'>Echo Canceller</font>";
+		strHTML += "<input id='cb"+i+"' type=CHECKBOX onclick='updateEcho();' Value='Echo Canceller' ";
+		strHTML += strEndHTML;
+		div.innerHTML = strHTML;
+		
+	
+	}
+}
+var G_strLastSelectedCard;
+var G_nCG4UpdateVolumesTimerID;
+function updateVolumes()
+{
+	G_strLastSaved = "Volume";
+	upadteAll();
+}
+function updateEcho()
+{
+	G_strLastSaved = "Echo";
+	upadteAll();
+}
+/**********************************************************************************************/
+function getGlobalVolumesParam()
+/**********************************************************************************************/
+{
+	var strParams = "";
+	
+	if ( G_strLastCardType != "CT4.1" )
+	{
+		strParams += "/v";
+		for (var i=0; i<4; i++)
+		{
+			strParams += G_inVolumeSliders[0].getValue();
+			G_arVolumesIn[ i ] = G_inVolumeSliders[0].getValue();
+			if (i!=3)
+			{
+				strParams += ",";
+			}
+		}
+	}
+	
+	if ( G_strLastCardType != "CC4.0" )
+	{
+		strParams += "/V";
+		
+		for (var i=0; i<4; i++)
+		{
+			strParams += G_outVolumeSliders[0].getValue();
+			G_arVolumesIn[ i ] = G_outVolumeSliders[0].getValue();
+			if (i!=3)
+			{
+				strParams += ",";
+			}
+		}
+	}
+	return strParams;
+	
+}
+/**********************************************************************************************/
+function getGlobalEchoParams()
+/**********************************************************************************************/
+{
+	var strEchos = "";
+	var elem = document.getElementById( "cbEchoAll" );
+	strEchos += (elem.checked) ? "1" : "0"; 
+	var strParam = "/i" + strEchos + "," + strEchos + "," + strEchos + "," + strEchos  ;
+	return strParam;
+}
+/**********************************************************************************************/
+function generateSetVolumeCmd()
+/**********************************************************************************************/
+{
+
+    clearTimeout(G_nCG4UpdateVolumesTimerID);
+    var strCommand = "";
+	if ( G_nSelectedMethod == 1 )
+	{
+		//entire card
+		strCommand = "CellSetVolumes /I123/A" + G_nLastSelectedCard;
+		strCommand += getGlobalVolumesParam();
+		strCommand += getGlobalEchoParams();
+		parent.frames[0].SendCommand( strCommand );
+		G_nCG4UpdateVolumesTimerID = setTimeout("getInfo('" + G_strLastSelectedCard + "')",4000);
+		document.getElementById("update_settings").innerHTML = "Updating volumes...";
+	
+	}
+	else
+		if ( G_nSelectedMethod == 2 )
+		{
+			//entire system
+			G_nCurrent = 0;
+			setAllCards();
+			
+		}
+	
+}
+/**********************************************************************************************/
+function setAllCards()
+/**********************************************************************************************/
+{
+	if ( G_nCurrent == G_arAddresses.length)
+    {
+        clearTimeout( G_nCG4MonitorTimerID );
+		document.getElementById("update_settings").innerHTML = "All Cards (" + G_nCurrent + ") upadted successfully!";
+        return;
+    }    
+	var strCommand = "CellSetVolumes ";
+	strCommand += "/I" + (10 + G_nCurrent);
+	strCommand += "/A" + G_arAddresses[G_nCurrent];
+	strCommand += getGlobalVolumesParam();
+	strCommand += getGlobalEchoParams();
+    parent.frames[0].SendCommand( strCommand );
+	//alert(strCommand);
+	document.getElementById("update_settings").innerHTML = "Updating Card#" + (G_nCurrent+1);
+    G_nCurrent++;
+    G_nCG4MonitorTimerID = setTimeout("setAllCards()",1500);
+}
+/**********************************************************************************************/
+function upadteAll()
+/**********************************************************************************************/
+{
+	if ( G_nSelectedMethod != 0 )
+		//not in card methosd do nothing, user must click on apllay btn for saving
+		return;
+    clearTimeout(G_nCG4UpdateVolumesTimerID);
+    var strCommand = "CellSetVolumes /I123/A" + G_strLastSelectedCard;
+	
+	var strParams = "";
+	
+	if ( G_strLastCardType != "CT4.1" )
+	{
+		strParams += "/v";
+		for (var i=0; i<4; i++)
+		{
+			strParams += G_inVolumeSliders[i].getValue();
+			G_arVolumesIn[ i ] = G_inVolumeSliders[i].getValue();
+	
+			if (i!=3)
+			{
+				strParams += ",";
+			}
+		}
+	}
+	
+	if ( G_strLastCardType != "CC4.0" )
+	{
+		strParams += "/V";
+		
+		for (var i=0; i<4; i++)
+		{
+			strParams += G_outVolumeSliders[i].getValue();
+			G_arVolumesOut[ i ] = G_outVolumeSliders[i].getValue();
+			
+			if (i!=3)
+			{
+				strParams += ",";
+			}
+		}
+	}	
+	
+	var strEchos = "";
+	for(var i=0; i<G_nTotal; i++)
+	{
+		try{
+		var elem = document.getElementById( "cb" + i );
+		if ( elem.disabled )
+			strEchos += '-';
+		else		
+			strEchos += (elem.checked) ? "1" : "0"; 
+		strEchos += (i!=3) ? "," : "";
+		
+		}
+		catch(e){}
+		
+	}
+	if (strEchos != "" )
+	 	strParams += "/i" + strEchos;
+		
+	strCommand += strParams;
+    parent.frames[0].SendCommand( strCommand );
+    G_nCG4UpdateVolumesTimerID = setTimeout("getInfo('" + G_strLastSelectedCard + "')",4000);
+    document.getElementById("update_settings").innerHTML = "Updating volumes...";
+}
+/**********************************************************************************************/
+function getGWConfig()
+/**********************************************************************************************/
+{
+    parent.frames[0].SendCommand( "GetGWConfig" );
+}
+
+//var G_strSaveText;
+/**********************************************************************************************/
+function onSelectCard( strCard, strCardType )
+/**********************************************************************************************/
+{
+	G_nLastSelectedCard = strCard;
+	if ( G_nSelectedMethod != 0 )
+		//not in module setting, don't get card info
+		return;
+	if ( G_strLastCardType != strCardType )
+	{
+		G_strLastCardType = strCardType;
+		init(4);
+	}
+	
+    var nSlot = G_configInfo.calcSlotNumber( strCard );
+
+    G_strLastSelectedCard = strCard;
+    var strSaveText = getSelCardText( nSlot, strCardType );
+    document.getElementById("update_settings").innerHTML = strSaveText;
+    /*
+    G_strSaveText = "<A href='javascript:updateVolumes()'>Save volume settings for card at slot " + nSlot + "</A>";
+    */
+    getInfo( strCard );
+}
+
+var G_nCG4VolumesTimerID;
+/**********************************************************************************************/
+function getInfo( strAddress )
+/**********************************************************************************************/
+{
+    clearTimeout(G_nCG4VolumesTimerID);
+    parent.frames[0].SendCommand( "CellGetVolumes /I123/A" + strAddress );
+    G_nCG4VolumesTimerID = setTimeout("getInfo('" + strAddress + "')",4000);
+}
+/**********************************************************************************************/
+/**********************************************************************************************/
+function OnData( strMessage )
+/**********************************************************************************************/
+/**********************************************************************************************/
+
+{
+    var strCommand = new String( strMessage );
+    var strParam = strCommand.split( " " );
+    var strSection;
+    
+    var packStr = new PacketString( strParam[1] );
+    
+    switch ( strParam[0] )
+    {
+        case "CellVolumes":
+        {
+			//alert(  packStr.m_strMessage );
+            clearTimeout(G_nCG4VolumesTimerID);
+			if ( G_nSelectedMethod == 2)
+			{
+				setAllCards();
+				return;
+			}
+
+            var strVolumesIn	= new String( packStr.getSection( "v" ) );
+			var strEchos	= new String( packStr.getSection( "i" ) );
+            G_arVolumesIn	= strVolumesIn.split( "," );
+		    G_arEchos       = strEchos.split(","); 			
+            var strVolumesOut	= new String( packStr.getSection( "V" ) );
+            G_arVolumesOut	= strVolumesOut.split( "," );
+			
+	    /*
+            if (arVolumesIn.length != 4 )
+            {
+                alert( "invalid number of volumes" );
+                return;
+            }
+	    */
+            for (var i=0; i<4; i++)
+            {
+				if ( G_strLastCardType != "CT4.1" )
+				{
+					G_inVolumeSliders[ i ].setValue( parseInt( G_arVolumesIn[ i ] ), 10 );
+				}
+				if ( G_strLastCardType != "CC4.0" )
+				{
+					G_outVolumeSliders[ i ].setValue( parseInt( G_arVolumesOut[ i ] ), 10 );
+				}
+            }
+			updateEchosUI();
+            //document.getElementById("update_settings").innerHTML = G_strSaveText;
+
+            break;
+        }
+        
+        case "Ack":
+        {
+			var strMsg = "Ack";
+			switch ( G_strLastSaved )
+			{
+				case "Volume":
+				{
+					strMsg = "New volumes set successfully.";
+					 break;	
+				}
+				case "Echo":
+				{
+					strMsg = "Echo canceller mode set successfully (\"Save All Settings\" required for activation).";
+					break;
+				}
+			}
+            document.getElementById("update_settings").innerHTML = strMsg; 
+            clearTimeout(G_nCG4UpdateVolumesTimerID);
+            break;
+        }
+        
+        case "GWError":
+        {
+            clearTimeout(G_nCG4UpdateVolumesTimerID);
+            alert( "Got error message:" + strMessage );
+            document.getElementById("update_settings").innerHTML = "Error setting values";
+            break;
+        }
+
+        case "GWConfigInfo":
+        {
+			var objSelect = G_configInfo.getSelectCardHTML( packStr, "CG4.0,CC4.0,CT4.1,CU4.1,CC4.2", "Select cellular card", "onSelectCard" );
+           var strHTML = objSelect.m_strHTML;
+			var strSelCard = objSelect.m_strSelCard;
+			var strSelCardType = objSelect.m_strSelCardType;
+           document.getElementById("selectcard").innerHTML = strHTML;  
+			if ( strSelCard!=null )
+           {                    
+            onSelectCard( strSelCard, strSelCardType );
+			onSelectedMethod(0);
+           }
+		   //get all cars addresses for global volume set
+		   FillCardType( "CG4.0" );
+		   FillCardType( "CC4.0" );
+		   FillCardType( "CT4.1" );
+		   FillCardType( "CU4.1" );
+		   FillCardType( "CC4.2" );
+		   sortCardsAddresses();
+			
+           break;
+        }
+        
+        default:
+        {
+            // Send this to TCPServer log file ? internal log file ?
+            // alert( "Got unknown message:" + strMessage );
+            break;
+        }
+    }
+}
+
+/**********************************************************************************************/
+function FillCardType( strType )
+/**********************************************************************************************/
+{
+	var arTypeAddr = G_configInfo.getCardTypeAddresses( strType );
+        
+	if ( typeof( arTypeAddr ) != 'undefined' )
+	{
+		for (var i=0; i<arTypeAddr.length; i++)
+		{
+			G_arTypes.push( strType );
+		}
+		G_arAddresses = G_arAddresses.concat( arTypeAddr );
+	}
+}
+/**********************************************************************************************/
+function sortCardsAddresses()
+/**********************************************************************************************/
+{
+	var nAddress = new Array();
+	for ( var i=0; i<G_arAddresses.length; i++ )
+	{
+		nAddress[i] = parseInt(G_arAddresses[i] , 16);
+	}
+	nAddress.sort();
+	for ( var i=0; i<nAddress.length; i++ )
+	{
+		G_arAddresses[i] = nAddress[i].toString(16);
+	}
+}
+/**********************************************************************************************/
+function showTable( nChecked )
+/**********************************************************************************************/
+
+{
+	var checked = new Array;
+	for (var i=0; i<3; i++)
+	{
+		if ( nChecked == i )
+		{
+			checked[ i ] = "checked";
+		}
+		else
+		{
+			checked[ i ] = "";
+		}
+	}
+	strHTML = "<br><table width='400'>"; 
+	strHTML += "<tr bgcolor='#eeeeee'>";
+	strHTML += "<td><input type='radio' onClick='onSelectedMethod(0)' name='SetMethod' " + checked[0] + ">Module Settings</td>";
+	strHTML += "<td><input type='radio' onClick='onSelectedMethod(1)' name='SetMethod' " + checked[1] + ">Entire Card</td>";
+	strHTML += "<td><input type='radio' onClick='onSelectedMethod(2)' name='SetMethod' " + checked[2] + ">Entire System</td>";
+	strHTML += "</tr></table><br>";
+    document.getElementById("mode").innerHTML = strHTML;
+}
+/**********************************************************************************************/
+function onSelectedMethod( nMethod )
+/**********************************************************************************************/
+{
+	G_nSelectedMethod = nMethod;
+	showTable( nMethod );
+	
+	if ( nMethod != 0 )
+	{
+		G_nTotal = 1;
+		init();
+		G_inVolumeSliders[ 0 ].setValue( 5, 10 );
+		G_outVolumeSliders[ 0 ].setValue( 5, 10 );
+		//add save button
+		showSave();
+		document.getElementById("savebtn").style.visibility  = "visible";
+		var div = document.getElementById("echo0");
+		var strHTML =  "<font color=''>Echo Canceller</font>";
+		strHTML += "<input id='cbEchoAll' type=CHECKBOX  Value='Echo Canceller'><br>";
+		div.innerHTML = strHTML;
+	}
+	else
+	{
+		G_nTotal = 4
+		document.getElementById("selectcard").style.display = "";
+		init();
+		onSelectCard(G_nLastSelectedCard,G_strLastCardType);
+		document.getElementById("savebtn").style.visibility  = "hidden";
+	}
+	
+	//refreshSliderPos();
+}
+/**********************************************************************************************/
+function showSave()
+/**********************************************************************************************/
+{
+    var strSave = utils_getButtonHTML( "generateSetVolumeCmd()", "SaveSettings.jpg" );
+    document.getElementById("savebtn").innerHTML = strSave;
+}
+/**********************************************************************************************/
+function refreshSliderPos( bReset )
+/**********************************************************************************************/
+{
+    for (var i=0; i<G_nTotal; i++)
+    {
+		if ( G_strLastCardType != "CT4.1" )
+		{
+			G_inVolumeSliders[i].draw();
+		}
+		if ( G_strLastCardType != "CC4.0" )
+		{
+			G_outVolumeSliders[i].draw();
+		}
+		if ( G_arVolumesIn.length > 0 )
+		{
+			var nInVol = 0;
+			var nOutVol = 0;
+			
+			if ( bReset != 0 )
+			{
+				nInVol = parseInt( G_arVolumesIn[ i ] );
+				nOutVol = parseInt( G_arVolumesOut[ i ] );
+			}
+			
+			if ( G_strLastCardType != "CT4.1" )
+			{
+				G_inVolumeSliders[ i ].setValue( nInVol , 10 );
+			}
+			if ( G_strLastCardType != "CC4.0" )
+			{
+				G_outVolumeSliders[ i ].setValue( nOutVol , 10 );
+			}
+		}
+    }
+}
+
+//-->
+</script>
+
+<BODY onLoad="getGWConfig();" bgcolor="white" onselectstart="return false;" >
+<font size=4 face="Arial">Cellular Card Volume Settings</font>
+<hr>
+<font face=Arial size=2>
+<div id="selectcard"></div>
+
+<font face=Arial size=2>
+<div id="update_settings"></div>
+<br>
+<div id="mode"></div>
+
+<div id="sliders"></div>
+<div id="savebtn"></div>
+</font>
+
+</body>
+</html>

@@ -1,0 +1,568 @@
+<HTML>
+<HEAD><TITLE>BRI cards - Connection settings</TITLE></HEAD>
+<link type="text/css" href="../default.css" rel="stylesheet">
+<SCRIPT language=javascript src="../utils/utilfuncs.js"></SCRIPT>
+<SCRIPT language=javascript src="../utils/alloc_logic.js"></SCRIPT>
+<SCRIPT>
+
+var G_PortNum     = 1;
+var G_PortsAmount = 4;
+var G_nUpdatedPort = 1;
+
+var G_strLastSelectedCard;
+
+var G_SaveButtonShown = 0;
+
+var G_Reloading = 0;
+
+var G_nDevType	   = new Array;
+var G_nPTP		   = new Array;
+var G_nSendMethod  = new Array;
+var G_nCountryCode = new Array;
+var G_nIsdnVersion = new Array;
+var G_nTEI         = new Array;
+var G_nClkSrc      = new Array;
+var G_arClkOpt     = new Array;
+
+var G_arCode2Name = new Array;
+G_arCode2Name[ "1000" ] = "EUROISDN";
+G_arCode2Name[ "33" ]   = "FRANCE";
+G_arCode2Name[ "49" ]   = "GERMANY ";
+G_arCode2Name[ "81" ]   = "JAPAN";
+G_arCode2Name[ "852" ]  = "HONG KONG";
+G_arCode2Name[ "1" ]    = "USA and CANADA";
+G_arCode2Name[ "82" ]   = "KOREA";
+G_arCode2Name[ "886" ]  = "TAIWAN";
+
+var G_arVer2Name = new Array;
+G_arVer2Name[ "11" ] = "EUROISDN";
+G_arVer2Name[ "3" ]  = "VN6";
+G_arVer2Name[ "4" ]  = "1TR6";
+G_arVer2Name[ "8" ]  = "NORTEL DMS100";
+G_arVer2Name[ "20" ] = "NATIONAL ISDN 2";
+G_arVer2Name[ "23" ] = "AT&T 5ESS";
+G_arVer2Name[ "24" ] = "AT&T 4ESS";
+G_arVer2Name[ "9" ]  = "NTT";
+G_arVer2Name[ "10" ] = "KDD";
+G_arVer2Name[ "17" ] = "HONG KONG";
+G_arVer2Name[ "25" ] = "KOREA";
+
+var G_arClkSrc2Name = new Array;
+G_arClkSrc2Name[ "0" ] = "Port 1";
+G_arClkSrc2Name[ "1" ] = "Port 2";
+G_arClkSrc2Name[ "2" ] = "Port 3";
+G_arClkSrc2Name[ "3" ] = "Port 4";
+G_arClkSrc2Name[ "4" ] = "Sync Port";
+G_arClkSrc2Name[ "7" ] = "System Clock";
+
+/**********************************************************************************************/
+function init()
+/**********************************************************************************************/
+{
+    getGWConfig();
+}
+
+/**********************************************************************************************/
+function getGWConfig()
+/**********************************************************************************************/
+{
+    parent.frames[0].SendCommand( "GetGWConfig" );
+}
+
+/**********************************************************************************************/
+function onSelectCard( strCard, strCardType )
+/**********************************************************************************************/
+{
+	if ( strCard == null )
+	{
+		return;
+	}
+    var nSlot = G_configInfo.calcSlotNumber( strCard );
+    G_strLastSelectedCard = strCard;
+	clearGUI();
+	G_Reloading = 0;
+	G_nUpdatedPort = 1;
+    getInfo( strCard, G_nUpdatedPort );
+    document.getElementById("update_settings").innerHTML = getSelCardText( nSlot, strCardType );
+}
+
+/**********************************************************************************************/
+function saveBRIConfig()
+/**********************************************************************************************/
+{
+	StoreCurrentPortSettings( G_PortNum );
+	G_nUpdatedPort = 1;
+    setInfo( G_strLastSelectedCard, G_nUpdatedPort );
+    document.getElementById("DIV_SaveConfig").innerHTML = "Saving configuration...";
+	G_SaveButtonShown = 0;
+}
+	
+/**********************************************************************************************/
+function getInfo( strAddress, nPort )
+/**********************************************************************************************/
+{
+    var strCommand = "E1GetConnParams /A";
+    strCommand += strAddress;
+    strCommand += "/I20";
+	strCommand += nPort;
+	strCommand += "/x1/Q";
+	strCommand += nPort;
+
+    parent.frames[0].SendCommand( strCommand );
+}
+
+/**********************************************************************************************/
+function setInfo( strAddress, nPort )
+/**********************************************************************************************/
+{
+    var strSet = "/r" + nPort;
+    strSet += "/G";
+    strSet += G_nDevType[ nPort ];
+    strSet += ",";
+    strSet += G_nPTP[ nPort ];
+	strSet += ",";
+    strSet += G_nSendMethod[ nPort ];
+	strSet += ",";
+    strSet += G_nCountryCode[ nPort ];
+	strSet += ",";
+    strSet += G_nIsdnVersion[ nPort ];
+	strSet += ",";
+    strSet += G_nTEI[ nPort ];
+	strSet += ",";
+    strSet += G_nTEI[ nPort ];
+
+	if (G_nDevType[ nPort ] == "2")
+    {
+		strSet += "/i";
+		strSet += G_nClkSrc[ nPort ];
+	}
+	
+    var strCommand = "E1SetConnParams /A";
+    strCommand += strAddress;
+    strCommand += "/I21";
+	strCommand += nPort;
+    strCommand += strSet;
+	
+    parent.frames[0].SendCommand( strCommand );
+}
+
+/**********************************************************************************************/
+function OnData( strMessage )
+/**********************************************************************************************/
+{
+    var strCommand = new String( strMessage );
+    var strParam = strCommand.split( " " );
+    var strSection;
+    
+    var packStr = new PacketString( strParam[1] );
+    
+    switch ( strParam[0] )
+    {
+        case "GWConfigInfo":
+        {
+			var objSelect = G_configInfo.getSelectCardHTML( packStr, "QBRI", "Select BRI card", "onSelectCard" );			
+            var strHTML = objSelect.m_strHTML;
+			var strSelCard = objSelect.m_strSelCard;
+			var strSelCardType = objSelect.m_strSelCardType;
+            document.getElementById("selectcard").innerHTML = strHTML;
+            if ( strSelCard != null )
+            {
+                document.getElementById("alert").style.visibility = "visible";
+                onSelectCard( strSelCard, strSelCardType );
+            }
+            else
+            {
+                document.getElementById("alert").style.visibility = "hidden";
+            }
+            
+            break;
+        }
+        
+        case "Ack":
+        {
+			if ( G_nUpdatedPort < G_PortsAmount )
+			{
+				setInfo( G_strLastSelectedCard , ++G_nUpdatedPort );
+			}
+			else
+			{
+				G_Reloading = 1;
+				document.getElementById("DIV_SaveConfig").innerHTML = "Reloading...";
+				G_nUpdatedPort = 1;
+				getInfo( G_strLastSelectedCard, G_nUpdatedPort );
+			}
+            break;
+        }
+        
+        case "GWError":
+        {
+			var strErrMsg = "Error communicating with card in slot " + G_configInfo.calcSlotNumber( G_strLastSelectedCard );
+            document.getElementById("DIV_SaveConfig").innerHTML = strErrMsg;
+            break;
+        }
+
+        case "CardSettingsReply":
+        {
+			var arPortNum = packStr.getSection( "r" );
+            var strInfo   = packStr.getSection( "g" );
+			var arParam   = strInfo.split( "," );
+			var arClkSrc  = new Array;
+			G_arClkOpt[ arPortNum ] = new Array;
+			var strClkParams = packStr.getSection( "i" );
+			if ( strClkParams != null )
+			{
+				arClkSrc = strClkParams.split( "(" );
+				re = /\)/;
+				G_arClkOpt[ arPortNum ] = (arClkSrc[ 1 ].replace( re, "" )).split ( "," );
+				G_nClkSrc[ arPortNum ]  =  arClkSrc[ 0 ];
+			}
+			else
+			{
+				G_nClkSrc[ arPortNum ]  = "7";			   //default = clock from system
+				G_arClkOpt[ arPortNum ][ 0 ] = "4";		   //available options = clock from sync port or system clock
+				G_arClkOpt[ arPortNum ][ 1 ] = "7";
+			}
+
+			G_nDevType[ arPortNum ]     = arParam[ 0 ]; 
+			G_nPTP[ arPortNum ]         = arParam[ 1 ];
+			G_nSendMethod[ arPortNum ]  = arParam[ 2 ];
+			G_nCountryCode[ arPortNum ] = arParam[ 3 ];
+			G_nIsdnVersion[ arPortNum ] = arParam[ 4 ];
+			G_nTEI[ arPortNum ]         = arParam[ 5 ];
+			
+			if ( G_nUpdatedPort < G_PortsAmount )
+			{
+				getInfo( G_strLastSelectedCard , ++G_nUpdatedPort );
+			}
+			else
+			{
+				DisplayPortSelection();
+				displayBRIParamTable( G_PortNum );
+				if ( G_Reloading )
+				{
+					G_Reloading = 0;
+					document.getElementById("DIV_SaveConfig").innerHTML = "Configuration saved.";
+				}
+			}
+        }
+        
+        default:
+        {
+            break;
+        }
+    }
+}
+
+/**********************************************************************************************/
+function DisplayPortSelection()
+/**********************************************************************************************/
+{
+	var strHTML = "<font face='Arial'>";
+    strHTML += "<br><table bgcolor='#FFFFAC'><tr><td width=100><b>Select Port </b></td>";
+    for (var i=1; i<=G_PortsAmount; i++ )
+    {
+        strHTML += "<td width=58>";
+        strHTML += "<input type=radio name='p' ";
+        strHTML += "value='" + i + "' ";
+        if ( i == G_PortNum )
+        {
+            strHTML += "checked ";
+        }
+        strHTML += "onClick='SelectPort(" + i + ");'>" + i;
+        strHTML += "</td>";
+    }
+
+	strHTML += "<td width=84></td>";
+    strHTML += "</tr></table></font><br>";
+
+	document.getElementById("DIV_PortSelection").innerHTML = strHTML;
+}
+
+/**********************************************************************************************/
+function displayBRIParamTable( arPortNum )
+/**********************************************************************************************/
+{
+    var strHTML = "<table>";
+	
+	///////////////////////////////////////////////////////////////////////////////////////////////
+		
+	strHTML += "<tr sel=-1 id='DevType'><td width=100><b>Port type</b></td>";
+	
+    strHTML += "<td width=178><input type=radio name='devt' ";
+    if ( G_nDevType[ arPortNum ] == "1" )
+    {
+        strHTML += "checked ";
+    }
+    strHTML += "onClick='updateDeviceMode( 1 );'>TE</td>";
+	
+    strHTML += "<td><input type=radio name='devt'";
+    if ( G_nDevType[ arPortNum ] == "2" )
+    {
+        strHTML += "checked ";
+    }
+    strHTML += "onClick='updateDeviceMode( 2 );'>NT</td>";
+	
+    strHTML += "</tr>";
+
+	///////////////////////////////////////////////////////////////////////////////////////////////
+
+	strHTML += "<tr sel=-1 id='PointToPoint'><td><b>Connection</b></td>";
+	
+    strHTML += "<td><input type=radio name='ptp' ";
+    if ( G_nPTP[ arPortNum ] == "1" )
+    {
+        strHTML += "checked ";
+    }
+    strHTML += "onClick='updateObjSel( this, 1 );'>Point-To-Point</td>";
+	
+    strHTML += "<td><input type=radio name='ptp'";
+    if ( G_nPTP[ arPortNum ] == "2" )
+    {
+        strHTML += "checked ";
+    }
+    strHTML += "onClick='updateObjSel( this, 2 );'>Point-To-MultiPoint</td>";
+	
+    strHTML += "</tr>";
+
+	///////////////////////////////////////////////////////////////////////////////////////////////
+
+	strHTML += "<tr sel=-1 id='SendMethod'><td><b>Dial Method</b></td>";
+		
+	strHTML += "<td><input type=radio name='dm' ";
+	if ( G_nSendMethod[ arPortNum ] == "0" )
+	{
+		strHTML += "checked ";
+	}
+	strHTML += "onClick='updateObjSel( this, 0 );'>EnBlock</td>";
+		
+	strHTML += "<td><input type=radio name='dm'";
+	if ( G_nSendMethod[ arPortNum ] == "1" )
+	{
+		strHTML += "checked ";
+	}
+	strHTML += "onClick='updateObjSel( this, 1 );'>Overlap</td>";
+
+	strHTML += "</tr>";
+
+	///////////////////////////////////////////////////////////////////////////////////////////////
+	
+	strHTML += "<tr><td><b>Country Code</b></td><td>";
+	strHTML += getCountryCodeCombo( G_nCountryCode[ arPortNum ] );
+	strHTML += "</td></tr>";
+
+	///////////////////////////////////////////////////////////////////////////////////////////////
+
+	strHTML += "<tr><td><b>ISDN Version</b></td><td>";
+	strHTML += getISDNVersionCombo( G_nIsdnVersion[ arPortNum ] );
+	strHTML += "</td></tr>";
+	
+	///////////////////////////////////////////////////////////////////////////////////////////////
+
+	strHTML += "<tr><td><b>TEI value</b></td>";
+	strHTML += "<td><INPUT TYPE='checkbox' NAME='AutoTei' ";
+	if ( G_nTEI[ arPortNum ] == 127 )
+	{
+		strHTML += "CHECKED";
+	}
+	strHTML += " onClick='AutoTeiClicked();'> Auto TEI </td>";
+	strHTML += "<td id='manualTEI' style='display:"
+	strHTML += ( G_nTEI[ arPortNum ] == 127 ) ? "none" : "inline"
+	strHTML += "'><INPUT TYPE=TEXT size=1 name='TEIval' value='" + G_nTEI[ arPortNum ] + "' onFocus='updateSaveUI();' > (0-63)</td></tr>";
+	
+	///////////////////////////////////////////////////////////////////////////////////////////////
+
+	strHTML += "<tr id='ClkSrcRow' style='display:"
+	strHTML += ( G_nDevType[ arPortNum ] == "2" ) ? "inline" : "none";
+	strHTML += "'><td><b>Clock Source</b></td><td>"
+	strHTML += getClockSourceCombo( G_nClkSrc[ arPortNum ], G_arClkOpt[ arPortNum ] );
+	strHTML += "</td></tr>"
+	
+	///////////////////////////////////////////////////////////////////////////////////////////////
+
+	strHTML += "</table>";
+
+    document.getElementById("DIV_GeneralSettings").innerHTML = strHTML;
+	
+	setInitialSel( arPortNum );
+}
+
+/**********************************************************************************************/
+function getCountryCodeCombo( strCountry )
+/**********************************************************************************************/
+{
+	var strHTML = "<select onChange='updateSaveUI();' name='Country'>";
+	
+	for (var strKey in G_arCode2Name)
+	{
+		strHTML += "<option value='" + strKey + "' "
+		if ( strKey == strCountry )
+		{
+			strHTML += "selected ";
+		}
+		strHTML += ">" + G_arCode2Name[strKey] + "</option>";
+	}
+	
+	strHTML += "</select>"
+	return strHTML;
+}
+
+/**********************************************************************************************/
+function getISDNVersionCombo( strISDNVer )
+/**********************************************************************************************/
+{
+	var strHTML = "<select onChange='updateSaveUI();' name='IsdnVer'>";
+	
+	for (var strKey in G_arVer2Name)
+	{
+		strHTML += "<option value='" + strKey + "' "
+		if ( strKey == strISDNVer )
+		{
+			strHTML += "selected ";
+		}
+		strHTML += ">" + G_arVer2Name[strKey] + "</option>";
+	}
+	
+	strHTML += "</select>"
+	return strHTML;
+}
+
+/**********************************************************************************************/
+function getClockSourceCombo( strClkSrc, strClkOpt )
+/**********************************************************************************************/
+{
+	var strHTML = "<select onChange='updateSaveUI();' name='ClockSource'>";
+
+	for (var strKey in strClkOpt)
+	{
+		strHTML += "<option value='" + strClkOpt[strKey] + "' "
+		if ( strClkOpt[strKey] == strClkSrc )
+		{
+			strHTML += "selected ";
+		}
+		strHTML += ">" + G_arClkSrc2Name[strClkOpt[strKey]] + "</option>";
+	}
+	
+	strHTML += "</select>"
+	return strHTML;
+}
+
+/**********************************************************************************************/
+function setInitialSel( arPortNum )
+/**********************************************************************************************/
+{
+	document.getElementById("DevType").sel       = parseInt( G_nDevType[ arPortNum ] );
+	document.getElementById("PointToPoint").sel  = parseInt( G_nPTP[ arPortNum ] );
+	document.getElementById("SendMethod").sel    = parseInt( G_nSendMethod[ arPortNum ] );
+	document.getElementById("Country").value	 = parseInt( G_nCountryCode[ arPortNum ] );
+	document.getElementById("IsdnVer").value	 = parseInt( G_nIsdnVersion[ arPortNum ] );
+	document.getElementById("TEIval").value		 = parseInt( G_nTEI[ arPortNum ] );
+	document.getElementById("ClockSource").value = parseInt( G_nClkSrc[ arPortNum ] );
+}
+
+/**********************************************************************************************/
+function StoreCurrentPortSettings( arPortNum )
+/**********************************************************************************************/
+{	
+	G_nDevType[ arPortNum ]     = document.getElementById("DevType").sel;
+	G_nPTP[ arPortNum ]		    = document.getElementById("PointToPoint").sel;
+	G_nSendMethod[ arPortNum ]  = document.getElementById("SendMethod").sel;
+	G_nCountryCode[ arPortNum ] = document.getElementById("Country").value;
+	G_nIsdnVersion[ arPortNum ] = document.getElementById("IsdnVer").value;
+	G_nTEI[ arPortNum ]         = document.getElementById("TEIval").value;
+	G_nClkSrc[ arPortNum ]      = document.getElementById("ClockSource").value;
+}
+
+/**********************************************************************************************/
+function SelectPort( port )
+/**********************************************************************************************/
+{
+	StoreCurrentPortSettings( G_PortNum );
+	G_PortNum = port;
+	displayBRIParamTable( G_PortNum );
+    if ( G_SaveButtonShown == 0 )
+	{
+		document.getElementById("DIV_SaveConfig").innerHTML = "";
+	}
+}
+
+/**********************************************************************************************/
+function AutoTeiClicked()
+/**********************************************************************************************/
+{
+    if ( document.getElementById("AutoTei").checked == true )
+    {
+		document.getElementById("ManualTEI").style.display = 'none';
+        document.getElementById("TEIval").value            = "127";
+    }
+    else
+    {
+		document.getElementById("ManualTEI").style.display = 'inline';
+        document.getElementById("TEIval").value            = "0";
+    }
+	updateSaveUI();
+}
+
+/**********************************************************************************************/
+function updateDeviceMode( nVal )
+/**********************************************************************************************/
+{
+	document.getElementById("DevType").sel = nVal;
+	document.getElementById("ClkSrcRow").style.display = ( nVal == 2 ) ? 'inline' : 'none';
+	updateSaveUI();
+}
+
+/**********************************************************************************************/
+function updateObjSel( obj, nVal )
+/**********************************************************************************************/
+{
+	obj.parentNode.parentNode.sel=nVal;
+	updateSaveUI();
+}
+
+/**********************************************************************************************/
+function updateSaveUI()
+/**********************************************************************************************/
+{
+    var strSave = utils_getButtonHTML( "saveBRIConfig()", "SaveSettings.jpg" );
+    document.getElementById("DIV_SaveConfig").innerHTML = strSave;
+	G_SaveButtonShown = 1;
+}
+
+/**********************************************************************************************/
+function clearGUI()
+/**********************************************************************************************/
+{
+    document.getElementById("update_settings").innerHTML = "";
+	document.getElementById("DIV_GeneralSettings").innerHTML = "";
+	document.getElementById("DIV_SaveConfig").innerHTML = "";
+	G_SaveButtonShown = 0;
+}
+
+</SCRIPT>
+
+<BODY onLoad="init()" onselectstart="return false;" bgcolor="white" ondragstart="return false;">
+<font size=4 face="Arial">BRI Connection Settings</font>
+<hr>
+
+<font face=Arial size=2>
+<div id="selectcard"></div>
+<div id="alert" style="visibility: hidden;"><font face=Arial size=2 color=red>These settings will be active only after saving changes to the system!</font></div>
+<br>
+
+<div id="update_settings"></div>
+<br>
+
+<div id="DIV_PortSelection" style="width:450px;height:70px;overflow:auto;">
+</div>
+
+<div id="DIV_GeneralSettings" style="width:450px;height:200px;overflow:auto;">
+</div>
+
+<br>
+<div id="DIV_SaveConfig">
+</div>
+
+</font>
+
+</BODY>
+</HTML>

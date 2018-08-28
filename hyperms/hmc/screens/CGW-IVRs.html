@@ -1,0 +1,380 @@
+<HTML>
+<HEAD><TITLE>CGW - Configuration</TITLE></HEAD>
+<STYLE type=text/css>TABLE {
+	BORDER-RIGHT: #000000 1px solid; BORDER-TOP: #000000 1px solid; BORDER-LEFT: #000000 1px solid; BORDER-BOTTOM: #000000 1px solid; border-spacing: 0px;
+}
+TD {
+	PADDING-RIGHT: 0.5em; PADDING-LEFT: 0.5em; FONT-SIZE: 10pt; PADDING-BOTTOM: 2px; PADDING-TOP: 2px; FONT-FAMILY: Arial, Helvetica, sans-serif; WHITE-SPACE: nowrap
+}
+</STYLE>
+<SCRIPT language=javascript src="../utils/utilfuncs.js"></SCRIPT>
+<SCRIPT language=javascript src="../utils/alloc_logic.js"></SCRIPT>
+<SCRIPT>
+// Received command from applet
+var G_bSaving = 0;
+var G_arVPNGroups = new Array();
+
+function init()
+{
+	parent.frames[0].SendCommand( "VPNGroups /I345" );
+}
+
+var G_strLastSelectedCard;
+var G_nIVRTimerID;
+
+function onSelectCard( strCard, strCardType )
+{
+    var nSlot = G_configInfo.calcSlotNumber( strCard );
+    G_strLastSelectedCard = strCard;
+    getInfo( strCard );
+    document.getElementById("update_settings").innerHTML = getSelCardText( nSlot, strCardType );
+}
+
+function showSave( nIndex )
+{
+    /*
+    if ( document.getElementById("DIV_SaveConfig").innerHTML == "Saving configuration..." )
+    {
+        return;
+    }
+    */
+	var strLogicalAddr = new String( G_configInfo.getMatrixAllocations( G_strLastSelectedCard )[ nIndex ] );
+	var arAddrChannel = strLogicalAddr.split( "." );
+	if ( arAddrChannel[ 0 ] ==  G_strLastSelectedCard )
+	{
+		// 1st and 2nd leg are on the same card.
+		// flip the disable state of the second leg
+		var nModuleIndex = parseInt( arAddrChannel[ 1 ] ) - 1;
+        var strID = "p" + nModuleIndex;
+		var objCheck = document.getElementById( strID );
+		objCheck.disabled = !objCheck.disabled;
+	}
+	
+    var strSave = utils_getButtonHTML( "saveIVRConfig()", "SaveSettings.jpg" );
+    document.getElementById("DIV_SaveConfig").innerHTML = strSave;
+}
+
+function saveIVRConfig()
+{
+    var strCommand = "SetIVRData /A";
+    strCommand += G_strLastSelectedCard;
+    strCommand += "/I23/G";
+
+	var strGroups = "";
+	var nTotalChannels = 4;
+    for (var i=0; i<nTotalChannels; i++)
+    {
+        var strID = "p" + i;
+		var strChecked;
+		var objCheck = document.getElementById(strID);
+
+        var strID2 = "g" + i;
+		var objGroup = document.getElementById(strID2);
+
+		if (objCheck == null)
+		{
+			strChecked = "";
+		}
+		else
+		if ( objCheck.checked )
+		{
+			var strSelValue = "";
+			if ( objGroup == null )
+			{
+				// UF: not a very elegant method of distinguishing it
+				
+				// This is a channel set as 2nd Leg IVR.
+				// The value of 2 indicates that no processing should be done on
+				// this IVR channel (as it is allocated as leg1 for a different
+				// channel).
+				strChecked = "2";
+			}
+			else
+			{
+				// This will handle leg1 enabled and disabled checked boxes
+				strSelValue = objGroup.options[objGroup.selectedIndex].text;
+				strGroups += strSelValue;
+				strChecked = "1";
+			}
+		}
+		else
+		{
+			// This will handle enabled unchecked boxes
+			strChecked = "0";
+		}
+		
+        strCommand += strChecked;
+		
+        if ( i != nTotalChannels-1 )
+        {
+			strGroups	+= ",";
+            strCommand	+= ",";
+        }
+    }
+
+	strCommand += "/V" + strGroups;
+	G_bSaving = 1;	
+	//return;
+    parent.frames[0].SendCommand( strCommand );
+
+    document.getElementById("DIV_SaveConfig").innerHTML = "Saving configuration...";
+}
+
+function OnData( strMessage )
+{
+    var strCommand = new String( strMessage );
+    var strParam = strCommand.split( " " );
+    var strSection;
+    
+    var packStr = new PacketString( strParam[1] );
+    
+    switch ( strParam[0] )
+    {
+        case "VPNGroupsReply":
+        {
+			var strGroups = packStr.getSection( "g" );
+			if ( strGroups != "" )
+			{
+				G_arVPNGroups = strGroups.split( "," );
+			}
+
+			parent.frames[0].SendCommand( "GetGWConfig" );
+			break;
+		}
+		
+        case "GWConfigInfo":
+        {
+		   var objSelect = G_configInfo.getSelectCardHTML( packStr, "CG4.0,CC4.0,CT4.1,CU4.1,CC4.2", "Select cellular card", "onSelectCard" );
+          var strHTML = objSelect.m_strHTML;
+		   var strSelCard = objSelect.m_strSelCard;
+		   var strSelCardType = objSelect.m_strSelCardType;
+          document.getElementById("selectcard").innerHTML = strHTML;
+          if ( strSelCard != null )
+          {
+            onSelectCard( strSelCard, strSelCardType );
+          } 
+          break;
+        }
+        
+        case "GWError":
+        {
+            document.getElementById("DIV_SaveConfig").innerHTML = "Error saving configuration.";
+            break;
+        }
+
+        case "IVRReply":
+        {			
+            clearTimeout(G_nIVRTimerID);
+            var strInfo		= packStr.getSection( "g" );
+            var arParam		= strInfo.split( "," );
+            var strGroups	= packStr.getSection( "v" );
+            var arGroups	= strGroups.split( "," );
+            var strApps		= packStr.getSection( "a" );
+            var arApps		= strApps.split( "," );
+			
+			//alert( "strInfo=" + strInfo + "strGroups=" + strGroups );
+            displayIVRsTable( arParam, arGroups, arApps ); 
+			
+			if ( G_bSaving == 1 )
+			{
+				G_bSaving = 0;
+				document.getElementById("DIV_SaveConfig").innerHTML = "Configuration saved.";
+			}
+        }
+        
+        default:
+        {
+            // Send this to TCPServer log file ? internal log file ?
+            //alert( "Got unknown message:" + strMessage );
+            break;
+        }
+    }
+}
+
+function displayIVRsTable( arParam, arGroups, arApps )
+{
+    var strHTML = "<table>";
+    strHTML += "<tr><td id='channel'></td>";
+	strHTML += "<td width='50' id='1stLeg'></td>";
+	strHTML += "<td width='90' id='status'></td>";
+	strHTML += "<td width='90' id='group'></td>";
+	strHTML += "<td width='90' id='2ndLeg'></td></tr>";	
+
+	for (var i=0; i<arParam.length; i++)
+    {
+        strHTML += "<tr><td>Module " + (i+1) + "</td>";
+		
+		if ( arParam[ i ] == "" )
+		{
+			strHTML += "<td align='center'>---";
+			strHTML += "</td>";
+			strHTML += "<td>";
+			strHTML += "Unmapped.";
+			strHTML += "</td>";
+			strHTML += "<td align='center'>---";
+			strHTML += "</td>";
+			
+			strHTML += "<td align='center'>---";
+			strHTML += "</td>";
+			strHTML += "</tr>";
+			continue;
+		}
+
+		var strLogicalAddr = new String( G_configInfo.getMatrixAllocations( G_strLastSelectedCard )[ i ] );
+		var arAddrChannel = strLogicalAddr.split( "." );
+		var strLeg2 = G_configInfo.getChannelText( arAddrChannel );
+		
+
+		if ( arParam[ i ] == "1" )
+		{
+			strHTML += "<td>";
+			strHTML += "<INPUT TYPE=CHECKBOX CHECKED DISABLED id='p" + i + "'>";
+			strHTML += "</td>";
+			strHTML += "<td>";
+			strHTML += "Used for leg 1.";
+			strHTML += "</td>";
+			strHTML += "<td>";
+			strHTML += '<select id="g' + i + '" disabled>';
+			strHTML += 	'<option>' + arGroups[ i ] + '</option>';
+			
+			// Add this so the disabled combo will be the same width as enabled the combos
+			for (var j=0; j < G_arVPNGroups.length; j++)
+			{
+				strHTML += 	'<option>' + G_arVPNGroups[ j ] + '</option>';
+			}
+			strHTML += "</select>";
+			
+			strHTML += "</td>";
+			
+			strHTML += "<td>";
+			strHTML += strLeg2;
+			strHTML += "</td>";
+		}
+		else
+		if ( arParam[ i ] == "0" )
+		{
+			if ( arApps[ i ] != "IVR-Leg1" &&
+			     arApps[ i ] != "IVR-Leg2" &&
+				 arApps[ i ] != "VoIP" &&
+				 arApps[ i ] != "" )
+			{
+				// Not set for IVR, but allready allocated
+				// to a different application
+				strHTML += "<td align='center'>---";
+				strHTML += "</td>";
+				strHTML += "<td>";
+				strHTML += "Used for " + arApps[ i ];
+				strHTML += "</td>";
+				strHTML += "<td align='center'>---";
+				strHTML += "</td>";
+				
+				strHTML += "<td align='center'>---";
+				strHTML += "</td>";
+				strHTML += "</tr>";
+				continue;
+			}
+			
+			var strApp = arApps[ i ];
+			
+			if ( strApp == "" )
+			{
+				strApp = "PRI/Cell GW";
+			}
+			else
+			if ( strApp == "VoIP" )
+			{
+				strApp += " GW";
+			}
+			
+			strHTML += "<td>";
+			strHTML += "<INPUT TYPE=CHECKBOX id='p" + i + "' onClick='showSave(" + i + ");'>";
+			strHTML += "</td>";
+			strHTML += "<td>";
+			strHTML += "Free. (" + strApp + ")";
+			strHTML += "</td>";
+			strHTML += "<td>";
+			strHTML += '<select id="g' + i + '">';
+			strHTML += 	'<option>General</option>';
+			for (var j=0; j < G_arVPNGroups.length; j++)
+			{
+				strHTML += 	'<option>' + G_arVPNGroups[ j ] + '</option>';
+			}
+			strHTML += '</select>';
+			strHTML += "</td>";
+			
+			strHTML += "<td>";
+			strHTML += strLeg2;
+			strHTML += "</td>";
+		}
+		else
+		if ( arParam[ i ] == "2" )
+		{
+			strHTML += "<td>";
+			strHTML += "<INPUT TYPE=CHECKBOX CHECKED DISABLED id='p" + i + "'>";
+			strHTML += "</td>";
+			strHTML += "<td>";
+			strHTML += "Used for leg 2.";
+			strHTML += "</td>";
+			strHTML += "<td>";
+			strHTML += "</td>";
+			strHTML += "<td>";
+			strHTML += strLeg2;
+			strHTML += "</td>";
+		}
+		
+        strHTML += "</tr>";
+    }
+	
+    strHTML += "</table>";
+    
+    document.getElementById("DIV_CGWIVRs").innerHTML = strHTML;
+	
+    strHTML = "<table>";
+    strHTML += "<tr bgcolor='#f0f0f0'><td width='"
+	strHTML += document.getElementById( 'channel' ).clientWidth + "'>Channel</td>";
+	strHTML += "<td width='"
+	strHTML += document.getElementById( '1stLeg' ).clientWidth + "'>Set 1st Leg</td>";	
+	strHTML += "<td width='"
+	strHTML += document.getElementById( 'status' ).clientWidth + "'>Status</td>";
+	strHTML += "<td width='"
+	strHTML += document.getElementById( 'group' ).clientWidth + "'>Group</td>";
+	strHTML += "<td width='"
+	strHTML += document.getElementById( '2ndLeg' ).clientWidth + "'>Other Leg</td>";
+    strHTML += "</table>";
+	
+	document.getElementById("DIV_CGWIVRsHeader").innerHTML = strHTML;
+}
+
+function getInfo( strAddress )
+{
+    var strCommand = "GetIVRData /A";
+    strCommand += strAddress;
+    strCommand += "/I27";
+    parent.frames[0].SendCommand( strCommand );
+    G_nIVRTimerID = setTimeout("getInfo('" + strAddress + "')",4000);
+}
+</SCRIPT>
+
+<BODY onLoad="init()" bgcolor="white" onselectstart="return false;" ondragstart="return false;">
+<font size=4 face="Arial">Cellular Card IVR Resources</font>
+<hr>
+
+<font face=Arial size=2>
+<div id="selectcard"></div>
+
+<div id="update_settings"></div>
+<br>
+
+<div id="DIV_CGWIVRsHeader">
+</div>
+<div id="DIV_CGWIVRs">
+</div>
+
+<br>
+<div id="DIV_SaveConfig">
+</div>
+
+</font>
+
+</BODY>
+</HTML>

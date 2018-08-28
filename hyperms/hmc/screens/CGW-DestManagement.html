@@ -1,0 +1,459 @@
+<html>
+<head>
+	<link type="text/css" href="../default.css" rel="stylesheet">
+	<TITLE>Cellular Gateways - Calling Restrictions</TITLE>
+</head>
+<SCRIPT language=javascript src="../utils/utilfuncs.js"></SCRIPT>
+<SCRIPT language=javascript src="../utils/alloc_logic.js"></SCRIPT>
+<SCRIPT>
+
+var G_strLastSelectedCard;
+var G_nCurrentFeatureNum;
+var G_nTimerID;
+var G_nTimerID_2;
+
+var G_nLastFeature     = 50;
+var G_bInSavingProcess = false;
+var G_Reloading        = 0;
+var G_SaveToAllCards   = false;
+
+var G_DelayBetweenBroadcasts = 2000;
+var G_SaveTimeoutValue       = 5000;
+
+var G_arFeatureValue   = new Array();
+var G_strFieldNames    = new Array();
+var G_arMultiCardWrite = new Array();
+
+G_strFieldNames[  1 ]  = "AllowedDest1";
+G_strFieldNames[  2 ]  = "AllowedDest2";
+G_strFieldNames[  3 ]  = "AllowedDest3";
+G_strFieldNames[  4 ]  = "AllowedDest4";
+G_strFieldNames[  5 ]  = "ShortCut1";
+G_strFieldNames[  6 ]  = "ShortCut2";
+G_strFieldNames[  7 ]  = "AddDest1";
+G_strFieldNames[  8 ]  = "AddDest2";
+G_strFieldNames[  9 ]  = "AltMsn1";
+G_strFieldNames[ 10 ]  = "AltMsn2";
+G_strFieldNames[ 11 ]  = "AltMsn3";
+G_strFieldNames[ 12 ]  = "AltMsn4";
+G_strFieldNames[ 13 ]  = "DigAmnt";
+G_strFieldNames[ 14 ]  = "DestShortCut";
+G_strFieldNames[ 15 ]  = "StdMsn1";
+G_strFieldNames[ 16 ]  = "StdMsn2";
+G_strFieldNames[ 17 ]  = "StdMsn3";
+G_strFieldNames[ 18 ]  = "StdMsn4";
+
+G_arMultiCardWrite[  1 ] = false;
+G_arMultiCardWrite[  2 ] = false;
+G_arMultiCardWrite[  3 ] = false;
+G_arMultiCardWrite[  4 ] = false;
+G_arMultiCardWrite[  5 ] = true;
+G_arMultiCardWrite[  6 ] = true;
+G_arMultiCardWrite[  7 ] = true;
+G_arMultiCardWrite[  8 ] = true;
+G_arMultiCardWrite[  9 ] = true;
+G_arMultiCardWrite[ 10 ] = true;
+G_arMultiCardWrite[ 11 ] = true;
+G_arMultiCardWrite[ 12 ] = true;
+G_arMultiCardWrite[ 13 ] = true;
+G_arMultiCardWrite[ 14 ] = true;
+G_arMultiCardWrite[ 15 ] = false;
+G_arMultiCardWrite[ 16 ] = false;
+G_arMultiCardWrite[ 17 ] = false;
+G_arMultiCardWrite[ 18 ] = false;
+
+/**********************************************************************************************/
+function init()
+/**********************************************************************************************/
+{
+    parent.frames[0].SendCommand( "GetGWConfig" );
+}
+
+/**********************************************************************************************/
+function onSelectCard( strCard, strCardType )
+/**********************************************************************************************/
+{
+    var nSlot = G_configInfo.calcSlotNumber( strCard );
+    G_strLastSelectedCard = strCard;
+	cleanDivs();
+	G_Reloading           = 0;
+	G_SaveToAllCards      = false;
+	G_nCurrentFeatureNum  = 1;
+    getNextFeature();
+    document.getElementById("update_settings").innerHTML = getSelCardText( nSlot, strCardType );
+}
+
+/**********************************************************************************************/
+function showSave()
+/**********************************************************************************************/
+{
+    var strSave = utils_getButtonHTML( "saveConfig()", "SaveSettings.jpg" );
+    document.getElementById("DIV_SaveConfig").innerHTML = strSave;
+}
+
+/**********************************************************************************************/
+function setSaveAckTimer()
+/**********************************************************************************************/
+{
+	G_bInSavingProcess = false; 
+	document.getElementById("DIV_SaveConfig").innerHTML = "Error saving (#" + G_nCurrentFeatureNum + "), please try again.";
+}
+
+/**********************************************************************************************/
+function saveConfig()
+/**********************************************************************************************/
+{
+	G_nCurrentFeatureNum = 1;
+	if ( G_SaveToAllCards )
+	{
+		while ( G_arMultiCardWrite[ G_nCurrentFeatureNum ] == false ) G_nCurrentFeatureNum++;
+	}
+	G_bInSavingProcess = true;
+	clearTimeout( G_nTimerID );
+	G_nTimerID = setTimeout( setSaveAckTimer, G_SaveTimeoutValue );
+	saveFeature( G_nCurrentFeatureNum )
+}
+
+/**********************************************************************************************/
+function saveFeature ( nFeature )
+/**********************************************************************************************/
+{	
+	var obj = document.getElementById( G_strFieldNames[ nFeature ] );
+	if ( obj != null )
+	{
+	    var strCommand = "SendGenericPacket 9c:/A" + ( G_SaveToAllCards ? '0' :G_strLastSelectedCard );
+	    strCommand += "/I" + (nFeature + 100) + "/G" + nFeature + ( (nFeature == 13) ? "/l" : "/i" ) + obj.value;
+   	    parent.frames[0].SendCommand( strCommand );
+	    document.getElementById("DIV_SaveConfig").innerHTML = "Saving configuration...";
+	}
+	else
+	{
+		G_bInSavingProcess = false;
+	}
+}
+
+/**********************************************************************************************/
+function OnData( strMessage )
+/**********************************************************************************************/
+{
+    var strCommand = new String( strMessage );
+    var strParam = strCommand.split( " " );
+    var strSection;
+    
+    var packStr = new PacketString( strParam[1] );
+    
+    switch ( strParam[0] )
+    {
+        case "GWConfigInfo":
+        {
+			var objSelect = G_configInfo.getSelectCardHTML( packStr, "CG4.0", "Select cellular card", "onSelectCard" );
+            var strHTML = objSelect.m_strHTML;
+			var strSelCard = objSelect.m_strSelCard;
+			var strSelCardType = objSelect.m_strSelCardType;
+            document.getElementById("selectcard").innerHTML = strHTML;
+            if ( strSelCard != null )
+            {
+                onSelectCard( strSelCard, strSelCardType );
+            } 
+            break;
+        }
+        
+        case "Ack":
+        case "GWError":
+        {
+			if ( packStr.getSection( "A" ) != G_strLastSelectedCard ) break;
+			
+			var nErrorCode = packStr.getSection( "R" );
+			if ( G_bInSavingProcess )
+			{
+				if ( ( strParam[ 0 ] == "Ack" ) || ( ( strParam[ 0 ] == "GWError" ) && ( nErrorCode == "01" ) ) )
+				{
+					clearTimeout( G_nTimerID );
+					G_nCurrentFeatureNum ++;
+					while ( G_nCurrentFeatureNum <= G_nLastFeature )
+					{
+						if ( G_strFieldNames[ G_nCurrentFeatureNum ] != null )
+						{
+							if ( ( G_SaveToAllCards == false ) || ( G_arMultiCardWrite[ G_nCurrentFeatureNum ] == true ) )
+							{
+								G_nTimerID = setTimeout( setSaveAckTimer, G_SaveTimeoutValue );
+								if ( G_SaveToAllCards == false )
+								{
+									saveFeature( G_nCurrentFeatureNum );
+								}
+								else
+								{
+									clearTimeout( G_nTimerID_2 );
+									G_nTimerID_2 = setTimeout( "saveFeature( G_nCurrentFeatureNum )", G_DelayBetweenBroadcasts );
+								}
+								return;
+							}
+						}
+						G_nCurrentFeatureNum ++;
+					}
+					G_bInSavingProcess = false;
+					G_Reloading = 1;
+					document.getElementById("DIV_SaveConfig").innerHTML = "Reloading...";
+					G_nCurrentFeatureNum  = 1;
+					if ( G_SaveToAllCards == false )
+					{
+						getNextFeature();
+					}
+					else
+					{
+						clearTimeout( G_nTimerID_2 );
+						G_nTimerID_2 = setTimeout( "getNextFeature()", G_DelayBetweenBroadcasts );
+					}
+				}
+			}
+			if ( strParam[ 0 ] == "GWError" )
+			{
+				if ( nErrorCode == "6F" )
+				{
+					notSupported();
+				}
+				else
+				{
+					if ( packStr.getSection( "I" ) == "654" )
+					{
+						G_arFeatureValue[ G_nCurrentFeatureNum ] = "";
+						G_nCurrentFeatureNum ++;
+						getNextFeature()
+					}					
+					else if ( nErrorCode != "01" )
+					{
+						//alert ( strMessage);
+						G_bInSavingProcess = false;
+						clearTimeout( G_nTimerID );
+						document.getElementById("DIV_SaveConfig").innerHTML = "Error saving configuration.";
+					}
+				}
+			}
+			break;
+        }
+
+        case "GenericReply":
+        {
+			if ( strParam[1].indexOf( "/#9c" ) > -1 )
+            {
+           		var nFeatureNum = parseInt( packStr.getSection( "g" ) );
+				var strValue    = packStr.getSection( "i" );
+				G_arFeatureValue[ nFeatureNum ] = strValue;
+				if ( ( nFeatureNum == 1 ) && ( document.getElementById("DIV_Values").innerHTML == "" ) )
+				{
+					document.getElementById("DIV_Values").innerHTML = "<br><tr><td>Please Wait...</td></tr>";
+				}
+				G_nCurrentFeatureNum ++;
+				getNextFeature( );				
+            }
+			break;   
+        }
+        
+        default:
+        {
+            break;
+        }
+    }
+}
+
+/**********************************************************************************************/
+function displayTable()
+/**********************************************************************************************/
+{	
+    var strHTML = "";
+	strHTML += "<br><tr><b>Media Connections:</b></tr>";
+	strHTML += "<table width=750 bgcolor='#fcfce0'><tr>";
+	for ( var i=1; i<=4; i++ )
+	{       
+        strHTML += "<td width=180>Module " + i + "</td>";
+	}
+	strHTML += "</tr><tr>";
+    var arMedia = G_configInfo.getMatrixAllocations( G_strLastSelectedCard );
+	for ( var i=1; i<=4; i++ )
+	{       
+        strHTML += "<td width=180><b>";
+        var arLink = arMedia[i-1].split('.');
+		if ( arLink[0] == '' )
+		{
+			strHTML += "-";
+		}
+		else
+		{
+			strHTML += G_configInfo.addr2Name( arLink[0] );
+			strHTML += " Channel " + arLink[1];
+		}
+		strHTML += "</b></td>";
+	}
+	strHTML += "</tr></table><br><br>";
+	
+	strHTML += "<tr><font color=blue size=3><b><u>Outgoing GSM calls</u></b></font></tr><br><br>";
+	strHTML += "<tr><b>Allowed destination numbers:</b></tr>";
+	strHTML += "<table width=750 bgcolor='#e9ecff'><tr>";
+	for (var i=1; i<=4; i++)
+    {
+        strHTML += "<td width=70>Module " + i + "</td>";
+        strHTML += "<td><INPUT TYPE=TEXT size=10 name='" + G_strFieldNames[ i ];
+        strHTML += "' value='" + G_arFeatureValue[ i ] + "' onFocus='showSave();'></td>";
+    }
+	strHTML += "</tr></table><br><br>";
+
+	strHTML += "<tr><b>Shortcut dialed numbers:</b></tr>";
+	strHTML += "<table width=750 bgcolor='#fcfce0'>";
+	for (i=1; i<=2; i++)
+    {
+        strHTML += "<tr><td width=110>Dialing shortcut</td>";
+        strHTML += "<td><INPUT TYPE=TEXT size=10 name='" + G_strFieldNames[ i + 4 ];
+        strHTML += "' value='" + G_arFeatureValue[ i + 4 ] + "' onFocus='showSave();'></td>";
+        strHTML += "<td width=160>leads to GSM dialing:</td>";
+        strHTML += "<td><INPUT TYPE=TEXT size=10 name='" + G_strFieldNames[ i + 6 ];
+        strHTML += "' value='" + G_arFeatureValue[ i + 6 ] + "' onFocus='showSave();'></td>";
+		strHTML += "<td width=170></td></tr>";
+    }
+    strHTML += "<tr><td width=110>Dialing shortcut</td>";
+    strHTML += "<td><INPUT TYPE=TEXT size=10 name='" + G_strFieldNames[ 14 ];
+    strHTML += "' value='" + G_arFeatureValue[ 14 ] + "' onFocus='showSave();'></td>";
+    strHTML += "<td width=160>leads to GSM dialing:</td>";
+    strHTML += "<td>The allowed destination number</td></tr>";
+	strHTML += "</table><br><br>";
+	
+	strHTML += "<tr><font color=blue size=3><b><u>Incoming GSM calls</u></b></font></tr><br><br>";
+	strHTML += "<table width=750 bgcolor='#e9ecff'>";
+    strHTML += "<tr><td width=400>CLI digits to match on incoming call's source number: </td>";
+	strHTML += "<td><select onChange='showSave();' name='" + G_strFieldNames[ 13 ] + "'>";
+	for (i=0 ; i<=15 ; i++)
+	{
+		strHTML += "<option value='" + i + "' "
+		if ( i == G_arFeatureValue[ 13 ] )
+		{
+			strHTML += "selected ";
+		}
+		strHTML += ">" + i + "</option>";
+	}
+	strHTML += "</select></td><td width=450></td></tr></table><br><br>"
+
+	strHTML += "<tr><b>DDI for incoming calls from the allowed source number:</b></tr>";
+	strHTML += "<table width=750 bgcolor='#fcfce0'><tr>";
+	for (i=1; i<=4; i++)
+    {
+        strHTML += "<td width=70>Module " + i + "</td>";
+        strHTML += "<td><INPUT TYPE=TEXT size=10 name='" + G_strFieldNames[ i + 14 ];
+        strHTML += "' value='" + G_arFeatureValue[ i + 14 ] + "' onFocus='showSave();'></td>";
+    }
+	strHTML += "</tr></table><br><br>";
+
+	strHTML += "<tr><b>DDI for incoming calls from unallowed source numbers:</b></tr>";
+	strHTML += "<table width=750 bgcolor='#e9ecff'><tr>";
+	for (i=1; i<=4; i++)
+    {
+        strHTML += "<td width=70>Module " + i + "</td>";
+        strHTML += "<td><INPUT TYPE=TEXT size=10 name='" + G_strFieldNames[ i + 8 ];
+        strHTML += "' value='" + G_arFeatureValue[ i + 8 ] + "' onFocus='showSave();'></td>";
+    }
+	strHTML += "</tr></table><br>";
+
+	strHTML += "<tr><td><INPUT TYPE='checkbox' NAME='ApplyToAll' ";
+	if ( G_SaveToAllCards == true )
+	{	       
+		strHTML += "CHECKED";
+	}
+	strHTML += " onClick='ApplyToAllClicked()'> Apply to all GSM cards</td></tr><br>";
+	
+	document.getElementById("DIV_Values").innerHTML  = strHTML;
+}
+
+/**********************************************************************************************/
+function getNextFeature()
+/**********************************************************************************************/
+{
+    var strCommand = "SendGenericPacket 9c:/A" + G_strLastSelectedCard;
+
+	while ( G_nCurrentFeatureNum <= G_nLastFeature )
+	{
+		if ( G_strFieldNames[ G_nCurrentFeatureNum ] != null )
+		{
+			strCommand += "/I654/Q" + G_nCurrentFeatureNum;
+			parent.frames[0].SendCommand( strCommand );
+			break;
+		}
+		else G_nCurrentFeatureNum ++;
+	}
+
+	if ( G_nCurrentFeatureNum > G_nLastFeature )
+	{
+		G_SaveToAllCards = false;
+		displayTable();
+		if ( G_Reloading )
+		{
+			G_Reloading = 0;
+			document.getElementById("DIV_SaveConfig").innerHTML = "Configuration saved.";
+		}
+	}
+}
+
+/**********************************************************************************************/
+function ApplyToAllClicked()
+/**********************************************************************************************/
+{
+	if ( document.getElementById("ApplyToAll").checked == true )
+	{
+		G_SaveToAllCards = true;
+		showSave();
+	}
+	else
+	{
+		G_SaveToAllCards = false;
+	}
+
+	for (var i=1 ; i<=G_nLastFeature ; i++)
+	{
+		if ( G_strFieldNames[ i ] != null )
+		{
+			if ( G_arMultiCardWrite[ i ] == false )
+			{
+				document.getElementById( G_strFieldNames[ i ] ).disabled              = G_SaveToAllCards;
+				document.getElementById( G_strFieldNames[ i ] ).value                 = G_SaveToAllCards ? ""        : G_arFeatureValue[ i ];
+				document.getElementById( G_strFieldNames[ i ] ).style.backgroundColor = G_SaveToAllCards ? "#D0D0D0" : "#FFFFFF";
+			}
+		}
+	}
+}
+
+/**********************************************************************************************/
+function cleanDivs()
+/**********************************************************************************************/
+{
+	document.getElementById("DIV_SaveConfig").innerHTML = "";
+	document.getElementById("DIV_Values").innerHTML = "";
+}
+
+/**********************************************************************************************/
+function notSupported()
+/**********************************************************************************************/
+{
+	var strHTML = "<br><table><tr><td>These features are not supported by this card.</td></tr></table>";
+	cleanDivs();
+	document.getElementById("DIV_Values").innerHTML = strHTML;
+}
+
+</SCRIPT>
+
+<BODY onLoad="init()" bgcolor="white" ondragstart="return false;">
+	
+<font size=4 face="Arial">Cellular Card Calling Restrictions</font>
+<hr>
+
+<font face=Arial size=2>
+<div id="selectcard"></div>
+
+<div id="update_settings"></div>
+<br>
+
+<div id="DIV_Values"></div>
+<br>
+<div id="DIV_SaveConfig"></div>
+<br>
+
+</font>
+
+</BODY>
+</HTML>

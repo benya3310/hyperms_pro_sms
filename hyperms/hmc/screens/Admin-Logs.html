@@ -1,0 +1,14 @@
+<html>
+<head></head>
+<SCRIPT>
+function init()
+{
+	var strServerName	= parent.frames[0].getServerIP();
+	var strPassword		= parent.frames[0].getPassword();
+	var strLoc = "http://" + strServerName + "/cb/logs.php?password=" + strPassword;
+	document.location.href = strLoc;
+}
+</script>
+<body onLoad="init();">
+</body>
+</html>
