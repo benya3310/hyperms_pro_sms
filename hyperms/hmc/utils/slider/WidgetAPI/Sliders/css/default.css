@@ -1,0 +1,19 @@
+div.sliderBar {
+	font-size:0pt; 
+	position:absolute; 
+	width:159px; 
+	height:13px; 
+	z-index:1; 
+	left:0px; 
+	top:0px; 
+}
+
+div.sliderKnob {
+	font-size:0pt; 
+	position:absolute; 
+	width:29px; 
+	height:13px; 
+	z-index:2; 
+	left:0px; 
+	top:0px; 
+}

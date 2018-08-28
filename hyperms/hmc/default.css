@@ -1,0 +1,364 @@
+html {
+    font-family: Arial, Helvetica, Sans-Serif;
+    font-size: 100%;
+}
+
+input, select, button {
+    font-family: inherit;
+}
+
+h1 {
+    margin: 0;
+    font-size: 120%;
+    font-weight: normal;
+}
+
+h2, h3, h4, h5, h6 {
+    margin: 0;
+    font-size: 100%;
+}
+
+/* Standard alert */
+
+.alert .info {
+    font-size: 90%;
+    font-weight: normal;
+}
+
+/* Old stuff */
+
+.fullbody{margin:0 0 0 0}
+.NormalText{font-family: Arial; font-size: 12px}
+.mapText{ font-family: Arial; font-size: 12px; color: white; }
+.Table{ font-family: Arial; font-size: 12px; }
+.Button{ font-family: Arial; font-size: 12px}
+.TableNoBorder{ border:solid 0px #fff; padding: 1px;font-family: Arial; font-size: 12px;}
+.TableLight{ padding: 1px;font-family: Arial; font-size: 12px;}
+.TableHeader{ background-color: #efefef; border:solid 0px #000000; color: black; padding: 1px; font-family: Arial; font-size: 12px; font-weight:bold;}
+.TableHeaderBig{ background-color: #dedede; border:solid 0px #006699; color: black; padding: 1px; font-family: Arial; font-size: 12px; font-weight:bold;}
+.Link{font-family: Arial; font-size: 12px; cursor:pointer}
+.TableNoBorder{ border:solid 0px #fff; padding: 1px;font-family: Arial; font-size: 12px;}
+.Link{font-family: Arial; font-size: 12px; cursor:pointer}
+
+.TableHeader{ background-color: #efefef; color: black; padding: 3px; font-family: Arial; font-size: 12px; font-weight:bold;}
+.SettingHeader{ font-family: Arial; font-size: 18px; color: black;}
+.ProgressBar{ font-weight:bold; font-family: Arial; font-size: 12px; color: #901C3A; padding:4px; margin:4px;}
+
+.MenuCellSelected{ background-color: #901C3A; color: #ffffff; padding: 1px; font-family: Arial; font-size: 12px;}
+.MenuCellOver{ background-color: #ffffff; color: #006699; padding: 1px; font-family: Arial; font-size: 12px;}
+.MenuCell{ background-color: #006699; color: #ffffff;padding: 4px; font-family: Arial; font-size: 12px; }
+.TableCell{ font-family: Arial; font-size: 12px;}
+.TableCellSelected{ background-color: #901C3A; color: #ffffff; padding: 3px; font-family: Arial; font-size: 12px;}
+.ReadOnlyTextBox{ border:solid 0px #A4A392; Width:100px; font-family: Arial; font-size: 12px;}
+.ReadOnlyTextBoxWide{ border:solid 0px #A4A392; Width:200px; font-family: Arial; font-size: 12px;}
+.ComboBox{ border:solid 0px #A4A392; font-family: Arial; font-size: 12px;}
+.ErrTextBox{ background-color: red; border:solid 0px #A4A392; Width:100px; font-family: Arial; font-size: 12px;}
+
+.TextBox{ border:solid 0px #A4A392; Width:100px; font-family: Arial; font-size: 12px;}
+.txtBox{ border:solid 0px #A4A392; font-family: Arial; font-size: 12px;}
+.BorderedTextBox{ Width:100px; font-family: Arial; font-size: 12px;}
+.PlanRow{font-family: Arial; font-size: 12px};
+
+.TextBoxWide{ border:solid 0px #A4A392; font-family: Arial; font-size: 12px;}
+.GroupNameDropDown{ border:solid 0px #A4A392; font-family: Arial; font-size: 12px;}
+.LogLine{ font-family: Arial; font-size:8px; color:silver;}
+.hrLine{border: 1px solid #eeeeee;  left:2px}
+.hrWhiteLine{border: 1px solid 	#FFFFFF;  left:2px}
+
+.RedAlert{ font-family:Arial; font-size:12px; color:red;}
+.BlueAlert{ font-family:Arial; font-size:12px; color:#006699;}
+.BlueAlertBold{ font-family:Arial; font-size:12px; color:#006699; font-weight:bold}
+.BlueTitle{ font-family:Arial; font-size:12px; color:#006699;font-weight:bold}
+.LogoTitle{ font-family:Arial; font-size:12px; color:#AC2E34;font-weight:bold}
+#CelluCell .CellTable { border:solid 0px #fff; padding: 1px;font-family: Arial; font-size: 12px;}
+#CelluCell .SelCellTable{ background-color: #006699; color: white; padding: 3px; font-family: Arial; font-size: 12px;}
+#welcomeSection{ padding: 18px 18px 18px 18px; line-height:150%; background-color:#f2f5f7}
+#welcomeSection .title
+{
+	padding: 12px 18px 4px 12px; line-height:220%; background-color:#f2f5f7; margin-top:14px; margin-bottom:6px;
+	font-size:120%; font-weight:bold;
+	
+	}
+
+#helpSection{ padding: 8px 8px 8px 8px; background-color:#f5f5b0; line-height:150%; margin:4px;}
+#helpSection .title{color:#069; font-size:1.2em; font-weight:bold; line-height:200%;}
+#helpSection .hidden{visibility:hidden; display:none}
+#helpSection .visible{visibility:visible; display:block}
+
+#helpControl{background-color:#f5f5b0; padding: 0px 3px 0px 3px;}
+.hidden{visibility:hidden; display:none}
+.visible{visibility:visible; display:block}
+
+#Default-Wizard { border: solid 1px #dcdcdc; padding: 8px 8px 8px 8px; background-color:#f3f3f3; line-height:150%; margin:4px;}
+#Default-Wizard .title{color:#069; font-size:1.2em; font-weight:bold; line-height:200%;}
+
+#gatewaysArea
+.gwInfo{ 
+	background-color:#CCFF99;
+	float:left;
+	width:120px;
+	height:12px;
+	font-family: "Arial", "tahoma", "arial", "Helvetica";
+	font-size:0.7em;
+	margin:2px;
+	padding:2px;		
+}
+.gwInfoAlerted{ 
+	background-color:#ff0033;
+	float:left;
+	width:120px;
+	height:12px;
+	font-family: "Arial", "tahoma", "arial", "Helvetica";
+	font-size:0.7em;
+	margin:2px;
+	padding:2px;
+}
+.gwInfoDisabled{ 
+	background-color:#CCCCCC;
+	float:left;
+	width:120px;
+	height:12px;
+	font-family: "Arial", "tahoma", "arial", "Helvetica";
+	font-size:0.7em;
+	margin:2px;
+	padding:2px;
+}
+.gwInfoSuspended{
+	background-color:#FFFF99;
+	border: solid 1px #006699;
+	float:left;
+	width:120px;
+	height:12px;
+	font-family: "Arial", "tahoma", "arial", "Helvetica";
+	font-size:0.7em;
+	margin:2px;
+	padding:2px;
+}
+
+.gwHeaderHover{
+	font-family: "Arial", "tahoma", "arial", "Helvetica";
+	font-size:0.7em;
+}
+#cellsArea{display:block; margin-bottom: 25px;}
+
+.cellInfoSelected{
+	border: groove 1px #006699 !important;;
+	background-color:#B5EDBC;
+	background-image: url("icons/current.gif");
+	background-repeat: no-repeat;
+	background-position: 112px 3px;
+}
+.cellInfoCamped{
+	border: groove 1px #006699 !important;;
+	background-color:#C3D9FF;
+	background-image: url("icons/camped.gif");
+	background-repeat: no-repeat;
+	background-position: 112px 3px;	
+}
+.cellInfo{ 
+	
+	border: dotted 1px #006699;
+	float:left;
+	width:155px;
+	height:80px;
+	font-family: "Arial", "tahoma", "arial", "Helvetica";
+	font-size:0.7em;
+	margin:2px;
+	padding:2px;
+	
+		
+}
+
+.cellTag{
+	font-family:"Arial";
+	font-size:9px; line-height:11px;
+	float:left; width:50px; margin-right:2px;
+	text-align:left;	
+}
+.cellActiveTag{
+	font-family:"Arial";
+	font-size:12px; line-height:11px;
+	float:left; width:50px; margin-right:2px;
+	text-align:left;
+	
+	
+}
+.cellRxLevel{
+	
+	width: 120px
+}
+
+
+#channelsArea{display:block; margin-bottom: 25px;}
+
+.channelInfoSelected{
+	background-color:#ccccff;
+}
+
+
+.channelInfo{ 
+	
+	border: solid 1px silver;
+	float:left;
+	width:160px;
+	font-family: "Arial", "tahoma", "arial", "Helvetica";
+	font-size:0.7em;
+	margin:2px;
+	padding:2px;
+	cursor:pointer;
+	background-image: url("icons/empty-channel.png");
+	background-repeat: no-repeat;
+	background-position: 126px 16px;
+		
+}
+
+.channelNum, .groupNum , .resType{cursor:pointer !important;}
+
+.channelNum{
+	font-family:"Georgia", "Trebuchet MS";
+	font-size:16px; line-height:19px;
+	float:left; width:32px; margin-right:5px;
+	text-align:center;
+} 
+
+
+.CG4_0{
+	
+	background-image: url("icons/gsm.png");
+	background-repeat: no-repeat;
+	background-position: 126px 16px;
+	
+}
+.E1_0{
+	background-image: url("icons/e1-pri.png");
+	background-repeat: no-repeat;
+	background-position: 126px 16px;
+}
+
+.AN4_4{
+	background-image: url("icons/analog.png");
+	background-repeat: no-repeat;
+	background-position: 126px 16px;
+}
+
+.CU4_1{
+	background-image: url("icons/umts.png");
+	background-repeat: no-repeat;
+	background-position: 126px 16px;
+}
+
+.T1_0{
+	background-image: url("icons/t1-pri.png");
+	background-repeat: no-repeat;
+	background-position: 126px 16px;
+}
+.MG_0{
+	background-image: url("icons/voip.png");
+	background-repeat: no-repeat;
+	background-position: 126px 16px;
+}
+.LCR{
+	background-image: url("icons/lcr.png");
+	background-repeat: no-repeat;
+	background-position: 126px 16px;
+}
+.CC4_2{
+	background-image: url("icons/cdma.png");
+	background-repeat: no-repeat;
+	background-position: 126px 16px;
+}
+.QBRI{
+	background-image: url("icons/bri.png");
+	background-repeat: no-repeat;
+	background-position: 126px 16px;
+}
+.toolBar{
+	padding: 4px 4px 4px 4px;
+	margin: 4px 4px 4px 4px;
+	border-bottom: solid 1px #cfd344;
+	font-size:120%;
+	
+	font-family:"Georgia", "Trebuchet MS";
+}
+#groupAction{
+	margin:4px;
+	padding:8px 80px 8px 0px;
+	border: solid 1px Navy;
+	width:560px;
+	}
+#selectDesc{
+	font-weight:bolder;
+	font-style:oblique
+}
+TABLE {
+	BORDER-RIGHT: #000000 1px solid; BORDER-TOP: #000000 1px solid; BORDER-LEFT: #000000 1px solid; BORDER-BOTTOM: #000000 1px solid; border-spacing: 0px; 
+}
+TD {
+	PADDING-RIGHT: 0.5em; PADDING-LEFT: 0.5em; FONT-SIZE: 10pt; PADDING-BOTTOM: 2px; PADDING-TOP: 2px; FONT-FAMILY: Arial, Helvetica, sans-serif; WHITE-SPACE: nowrap
+}
+
+
+div.tableContainer {
+	width: 65%;		/* table width will be 99% of this*/
+	height: 295px; 	/* must be greater than tbody*/
+	overflow: auto;
+	margin: 0 auto;
+	}
+
+table.headerScollable {
+	width: 99%;		/*100% of container produces horiz. scroll in Mozilla*/
+	border: none;
+	background-color: #f7f7f7;
+	}
+	
+table.headerScollable>tbody	{  /* child selector syntax which IE6 and older do not support*/
+	overflow: auto; 
+	height: 250px;
+	overflow-x: hidden;
+	}
+	
+table.headerScollable thead tr	{
+	position:relative; 
+	top: expression(offsetParent.scrollTop); /*IE5+ only*/
+	}
+	
+table.headerScollable thead td, table.headerScollable thead th {
+	/*text-align: center;*/
+	font-size: 14px; 
+	background-color: oldlace;
+	color: steelblue;
+	font-weight: bold;
+	border-top: solid 1px #d8d8d8;
+	}	
+	
+table.headerScollable td	{
+	color: #000;
+	padding-right: 2px;
+	font-size: 12px;
+	/*text-align: right;*/
+	border-bottom: solid 1px #d8d8d8;
+	border-left: solid 1px #d8d8d8;
+	}
+	
+table.headerScollable tfoot tr { /*idea of Renato Cherullo to help IE*/
+      position: relative; 
+      overflow-x: hidden;
+      top: expression(parentNode.parentNode.offsetHeight >= 
+	  offsetParent.offsetHeight ? 0 - parentNode.parentNode.offsetHeight + offsetParent.offsetHeight + offsetParent.scrollTop : 0);
+      }
+
+
+table.headerScollable tfoot td	{
+	text-align: center;
+	font-size: 11px;
+	font-weight: bold;
+	background-color: papayawhip;
+	color: steelblue;
+	border-top: solid 1px slategray;
+	}
+
+table.headerScollable td:last-child {padding-right: 20px;} /*prevent Mozilla scrollbar from hiding cell content*/
+
+table.headerScollable tbody.scrollContent td {
+    background-color: white;
+}

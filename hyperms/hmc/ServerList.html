@@ -1,0 +1,433 @@
+<HTML>
+<head>
+<META HTTP-EQUIV="X-UA-COMPATIBLE" CONTENT="IE=EMULATEIE8">
+	<script src="js/sorttable.js"></script>
+    <SCRIPT language=javascript src="utils/rpc.js"></SCRIPT>
+<STYLE type=text/css>TABLE {
+	BORDER-RIGHT: #000000 1px solid; BORDER-TOP: #000000 1px solid; BORDER-LEFT: #000000 1px solid; BORDER-BOTTOM: #000000 1px solid; border-spacing: 0px; cell-spacing: 0px
+}
+TD {
+	PADDING-RIGHT: 0.5em; PADDING-LEFT: 0.5em; FONT-SIZE: 10pt; PADDING-BOTTOM: 2px; PADDING-TOP: 2px; FONT-FAMILY: Arial, Helvetica, sans-serif; WHITE-SPACE: nowrap
+}
+a:link {color: #C32224; text-decoration: none; }
+a:active {color: #C32224; text-decoration: none; }
+a:visited {color: #C32224; text-decoration: none; }
+a:hover {color: #F38294;; text-decoration: none; }
+
+
+
+	
+a:link.sortheader {color: #4169E1; font-weight: bold }
+a:active.sortheader {color: #4169E1; text-decoration: none;font-weight: bold}
+a:visited.sortheader {color: #1E90FF; text-decoration: none;font-weight: bold }
+a:hover.sortheader {color: #1E90FF; text-decoration: none;font-weight: bold}
+	
+input, select { 
+border: 1px #000000 solid; 
+font-family: Arial, Helvetica, sans-serif; 
+font-size: 11px; 
+margin-top: 0px; 
+margin-right: 0px; 
+margin-bottom: 0px; 
+margin-left: 0px; 
+padding-top: 1px; 
+padding-right: 0px; 
+padding-bottom: 1px; 
+padding-left: 2px; 
+height: 18px
+}
+
+img { 
+   border:0; 
+}
+</STYLE>
+</head>
+<BODY bgcolor="white" onLoad="getServerIP()" ondragstart="return false;"> 
+<SCRIPT language="Javascript" src="./utils/utilfuncs.js"></SCRIPT>
+<script type="text/javascript">
+var G_strTableHTML = '';
+var G_strEditTableHTML = '';
+var G_strTableHide = "Server Name (<a href='javascript:addServers();' > Add </a>)";
+
+function addServers()
+{
+    document.getElementById( "AddServer" ).innerHTML = G_strTableHTML;
+    //document.getElementById( "serverNameCol" ).innerHTML = "Server Name";
+		
+	
+}
+
+function hide()
+{
+    document.getElementById( "AddServer" ).innerHTML = "";
+		
+    //document.getElementById( "serverNameCol" ).innerHTML = G_strTableHide;
+}
+
+function getServerIP()
+{
+    G_strTableHTML += '<table width="450" border="0" bgcolor="fdfdee">';
+    G_strTableHTML += '<tr><td height="40">Address: &nbsp;<INPUT TYPE=TEXT size=22 name="serverIP">&nbsp;&nbsp;&nbsp;';
+    G_strTableHTML += 'Port: &nbsp;<INPUT TYPE=TEXT size=4 name="serverPort" value="8878">';
+    G_strTableHTML += '</td><td><a href="javascript:hide();">Hide</a></td>';
+	G_strTableHTML += '</tr><tr><td>ID: &nbsp;<INPUT TYPE=TEXT size=3 name="serverID">&nbsp&nbspPass: &nbsp;<INPUT TYPE=TEXT size=6 name="serverPass">&nbsp&nbspComments: &nbsp;<INPUT TYPE=TEXT size=15 name="serverComments"></td>';
+    G_strTableHTML += '</tr><tr><td>Save As: &nbsp;<INPUT TYPE=TEXT size=22 name="serverName"></td>';
+    G_strTableHTML += '<td><img name="bnext" src="./Up-AddToList.jpg"';
+    G_strTableHTML += 'onmousedown="clickIt( this, \'./Down-AddToList.jpg\', 1 );"';
+    G_strTableHTML += 'onmouseup="if (this.bPressed==1) {clickIt( this, \'./Up-AddToList.jpg\', 0 ); saveIP(); }"';
+    G_strTableHTML += 'onMouseOver="style.cursor=\'hand\'" onmouseout="clickIt( this, \'./Up-AddToList.jpg\', 0 );">';
+    G_strTableHTML += '</td></tr></table><br>';
+    //G_strEditTableHTML
+    loadServerList();
+    hide();
+}
+var G_arServers;
+
+function initServerList()
+{
+    G_arServers = new Array();
+    var objServerInfo = new Object();
+}
+
+function saveIP()
+{
+    var strIP = document.getElementById("serverIP").value;
+    var strPort = document.getElementById("serverPort").value;
+    var strName = document.getElementById("serverName").value;
+	var strPass = document.getElementById("serverPass").value;
+	var strID = document.getElementById("serverID").value;
+	var strComments = document.getElementById("serverComments").value;
+    
+	if ( strComments == "" )
+    {
+		strComments = " ";
+	}
+	if ( strID == "" )
+    {
+		strID = " ";
+	}
+	if ( strPass == "" )
+    {
+		strPass = " ";
+	}
+    if ( strIP == "" )
+    {
+        alert( "Please enter a valid IP address." );
+        return;
+    }
+    
+    if ( strPort == "" )
+    {
+        alert( "Please enter a valid port number." );
+        return;
+    }
+    
+    if ( strName == "" )
+    {
+        alert( "No name given for connection." );
+        return;
+    }
+    
+    var objServerInfo = new Object();
+    objServerInfo.m_strName = strName;
+    objServerInfo.m_strIP   = strIP;
+    objServerInfo.m_strPort = strPort;
+	objServerInfo.m_strID   = strID;
+	objServerInfo.m_strPass = strPass;
+	objServerInfo.m_strComments = strComments;
+    G_arServers.push( objServerInfo );
+    saveServerList();
+	displayServerList();
+}
+
+function saveServerList()
+{
+    var strData = "";
+    
+    for (var i=0; i<G_arServers.length; i++)
+    {
+        var objServerInfo = G_arServers[ i ];
+        strIP   = URLEncode( objServerInfo.m_strIP );
+        strPort = URLEncode( objServerInfo.m_strPort );
+        strName = URLEncode( objServerInfo.m_strName );
+		strPass = URLEncode( objServerInfo.m_strPass );
+		strID = URLEncode( objServerInfo.m_strID );
+		strComments = URLEncode( objServerInfo.m_strComments );
+        strData += "/a" + strIP + "/p" + strPort + "/n" + strName + "/P" + strPass + "/I" + strID + "/c" + strComments;
+        if ( i < G_arServers.length-1 )
+        {
+            strData += "|";
+        }
+    }
+    
+    var strCommand = "SetValue ServerList " + strData;
+    MaptiveX.Send( strCommand );
+}
+
+function loadServerList()
+{
+    initServerList();
+    var strCommand = "GetValue ServerList";
+    var strList = MaptiveX.Send( strCommand );
+    
+    if ( strList != "" )
+    {
+        var arParams = strList.split( "|" );
+        
+        for (var i=0; i<arParams.length; i++)
+        {
+            var packStr = new PacketString( arParams[ i ] );
+            var objServerInfo = new Object;
+            
+			objServerInfo.m_strIP   = URLDecode( packStr.getSection( "a" ) );
+            objServerInfo.m_strPort = URLDecode( packStr.getSection( "p" ) );
+            objServerInfo.m_strName = URLDecode( packStr.getSection( "n" ) );
+			
+			objServerInfo.m_strPass =  packStr.getSection( "P" );
+			objServerInfo.m_strComments =   packStr.getSection( "c" );
+			objServerInfo.m_strID =   packStr.getSection( "I" );
+			
+			objServerInfo.m_strPass = ( objServerInfo.m_strPass == null ) ? " " : URLDecode( objServerInfo.m_strPass );
+			objServerInfo.m_strComments =  ( objServerInfo.m_strComments == null ) ? " " : URLDecode( objServerInfo.m_strComments );
+			objServerInfo.m_strID =  ( objServerInfo.m_strID == null ) ? " " : URLDecode( objServerInfo.m_strID );
+            
+			G_arServers.push( objServerInfo );
+        }
+    }
+    
+    displayServerList();
+}
+
+function editItem( nItem )
+{
+    
+	//cretae edit table
+	var strHTML = "";
+	strHTML += '<table width="450" border="0" bgcolor="fdfdee">';
+    strHTML += '<tr><td height="40">Address: &nbsp;<INPUT TYPE=TEXT size=22 name="serverIP">&nbsp;&nbsp;&nbsp;';
+    strHTML += 'Port: &nbsp;<INPUT TYPE=TEXT size=4 name="serverPort" value="8878">';
+    strHTML += '</td><td><a href="javascript:hide();">Cancel</a></td>';
+	strHTML += '</tr><tr><td>ID: &nbsp;<INPUT TYPE=TEXT size=3 name="serverID">&nbsp&nbspPass: &nbsp;<INPUT TYPE=TEXT size=6 name="serverPass">&nbsp&nbspComments: &nbsp;<INPUT TYPE=TEXT size=15 name="serverComments"></td>';
+    strHTML += '</tr><tr><td>Save As: &nbsp;<INPUT TYPE=TEXT size=22 name="serverName"></td>';
+    strHTML += '<td><a href=\'javascript:edit("' + nItem + '")\'>Save</a>';
+    strHTML += '</td></tr></table><br>';
+    
+	document.getElementById( "AddServer" ).innerHTML = strHTML;
+	
+	var objServerInfo = G_arServers[ nItem ];
+
+	document.getElementById("serverIP").value = objServerInfo.m_strIP;
+    document.getElementById("serverPort").value = objServerInfo.m_strPort;
+    document.getElementById("serverName").value = objServerInfo.m_strName;
+	document.getElementById("serverPass").value = objServerInfo.m_strPass;
+	document.getElementById("serverID").value = objServerInfo.m_strID;
+	document.getElementById("serverComments").value = objServerInfo.m_strComments;
+	
+    //displayServerList();
+    //document.getElementById( "serverNameCol" ).innerHTML = G_strTableHide;
+    //saveServerList();
+}
+function edit( nItem )
+{
+	saveIP();
+	G_arServers.splice( nItem, 1 );	
+    displayServerList();
+    hide();
+    saveServerList();
+}
+
+function delItem( nItem )
+{
+    if ( !confirm( "Are you sure you wish to delete this item ?" ) )
+    {
+        return;
+    }
+    G_arServers.splice( nItem, 1 );
+	
+    displayServerList();
+    //document.getElementById( "serverNameCol" ).innerHTML = G_strTableHide;
+    saveServerList();
+}
+function launch_service(file , nItem)
+{
+    var image = new Image();
+    image.src = 'http://'+ G_arServers[ nItem ].m_strIP +'/hmc/hyperms-small.gif';
+    setTimeout
+    (
+        function()
+        {
+            // console.log(image.complete);
+            if ( !image.complete )
+            {
+                launch( file, nItem, "local" );
+            }
+            else
+            {
+                 launch( file, nItem, "web" );
+            }
+        },
+        2000
+    );
+    /*var image = new Image();
+    image.onload = function() {
+        launch( file, nItem, "web" );
+    };
+    image.onerror = function() {
+        launch( file, nItem, "local" );
+    };    
+    image.src = 'http://'+ G_arServers[ nItem ].m_strIP +'/hmc/hyperms-small.gif';*/
+    
+}
+function launch( file, nItem, type )
+{   
+    var app = file.split(".")[0];
+
+    if (type==="local")
+    {
+        switch (app)
+        {
+            case "hmc":               
+            case "logwatch":                
+            case "service-ie":
+            case "resourcemon":
+            case "hgsconfig":
+            case "cdrwatch":
+                var strCommand = "SaveServerIP " + G_arServers[ nItem ].m_strIP;
+                MaptiveX.Send( strCommand );
+                var strPage = "./" + file + "?/a" + G_arServers[ nItem ].m_strIP + "/p" + G_arServers[ nItem ].m_strPort + "/pass" + getPassword( nItem );
+                strPage += "/n" + URLEncode( G_arServers[ nItem ].m_strName );
+                var oNewWindow = window.open( strPage, "_blank", "directories=no,location=no,menubar=no,status=no,toolbar=no,resizable=yes,,scrollbars=yes" );
+                break;
+            default:
+                alert("Unknown application:" + app);
+        }
+    }
+    else
+    {
+        var url = "http://" + G_arServers[ nItem ].m_strIP + "/hmc?password=" + getPassword( nItem );        
+        switch (app)
+        {
+            case "hmc":                
+                break;
+            case "logwatch":
+                url += "&page=log";
+                break;
+            case "service-ie":
+                url += "&page=service";
+                break;
+            case "resourcemon":
+                url += "&page=resmon";
+                break;
+            case "hgsconfig":
+                url = "http://" + G_arServers[ nItem ].m_strIP + "/hmc/hgs";
+                break;
+            case "cdrwatch":            
+                url += "&page=voipcdr";
+                break;
+            default:
+                alert("Unknown application:" + app);
+                url = "";
+                break;                 
+        }        
+        if (url != "")
+        {
+            var oNewWindow = window.open( url, "_blank", "directories=no,location=no,menubar=no,status=no,toolbar=no,resizable=yes,scrollbars=yes" );
+            return false;
+        }
+        
+    }
+}
+function launch_local_hmc( nItem )
+{
+    var strCommand = "SaveServerIP " + G_arServers[ nItem ].m_strIP;
+    MaptiveX.Send( strCommand );
+    var strPage = "./hmc.html?/a" + G_arServers[ nItem ].m_strIP + "/p" + G_arServers[ nItem ].m_strPort + "/pass" + getPassword( nItem );
+    strPage += "/n" + URLEncode( G_arServers[ nItem ].m_strName );
+    var oNewWindow = window.open( strPage, "_blank", "directories=no,location=no,menubar=no,status=no,toolbar=no,resizable=yes,scrollbars=yes" );
+}
+function launch_web_hmc( nItem )
+{
+    var url = "http://" + G_arServers[ nItem ].m_strIP + "/hmc";
+    var oNewWindow = window.open( url, "_blank", "directories=no,location=no,menubar=no,status=no,toolbar=no,resizable=yes,scrollbars=yes" );
+}
+
+function launchService( strFile, nItem )
+{
+    var strCommand = "SaveServerIP " + G_arServers[ nItem ].m_strIP;
+    MaptiveX.Send( strCommand );
+    var strPage = "./" + strFile + "?/a" + G_arServers[ nItem ].m_strIP + "/p" + G_arServers[ nItem ].m_strPort + "/pass" + getPassword( nItem );
+    strPage += "/n" + URLEncode( G_arServers[ nItem ].m_strName );
+    var oNewWindow = window.open( strPage, "_blank", "directories=no,location=no,menubar=no,status=no,toolbar=no,resizable=yes,,scrollbars=yes" );
+}
+function getPassword( nItem )
+{
+    
+    if ( G_arServers[ nItem ].m_strPass == " " || G_arServers[ nItem ].m_strPass == "" )
+         return "admin";
+    else
+        return G_arServers[ nItem ].m_strPass.replace(/\s/g,"");
+
+}
+function displayServerList()
+{
+	 
+    var strHTML = "<table width='450' class='sortable' id='tbList'><tr bgcolor='#eeeeee'><td>ID</td><td id='serverNameCol'>Server Name</td><td>Address</td><td>Port</td><td>Pass</td><td>Comments</td><td></td></tr>";
+    for (var i=0; i<G_arServers.length; i++)
+    {
+        var objServerInfo = G_arServers[ i ];       
+		strHTML += "<tr>";
+       	strHTML += "<td>" + objServerInfo.m_strID + "</td>";
+        strHTML += "<td><a href='javascript:launch_service(\"hmc.html\", " + i + ")'>" + objServerInfo.m_strName + "</a></td>";        
+		strHTML += "<td>" + objServerInfo.m_strIP + "</td>";
+        strHTML += "<td>" + objServerInfo.m_strPort + "</td>";
+		strHTML += "<td>" + objServerInfo.m_strPass + "</td>";
+		strHTML += "<td>" + objServerInfo.m_strComments + "</td>";
+        strHTML += "<td>";
+		strHTML += "<a href='javascript:editItem( " + i + " )'>Edit</a>&nbsp;";
+        strHTML += "<a href='javascript:launch_service( \"hgsconfig.html\", " + i + " )'><img alt='Change Server Settings' height='18' width='18' src='./icons/config_new.ico' /></a>&nbsp;";
+        strHTML += "<a href='javascript:launch_service( \"logwatch.html\", " + i + " )'><img alt='Launch Log Console' height='18' width='18' src='./icons/logwatch_new.ico' /></a>&nbsp;";
+        strHTML += "<a href='javascript:launch_service( \"service-ie.html\", " + i + " )'><img alt='Launch Service Console' height='18' width='18' src='./icons/service_new.ico' /></a>&nbsp;";
+        strHTML += "<a href='javascript:launch_service( \"resourcemon.html\", " + i + " )'><img alt='Launch Resource Monitor' height='18' width='18' src='./icons/resource_new.ico' /></a>&nbsp;";
+        strHTML += "<a href='javascript:launch_service( \"cdrwatch.html\", " + i + " )'><img alt='Launch CDR Console' height='18' width='18' src='./icons/CDR_new.ico' /></a>&nbsp;";                
+        strHTML += "<a href='javascript:delItem( " + i + " )'><img alt='Delete Entry' height='18' width='18' src='./icons/delete_new.ico' /></a>&nbsp;";
+        strHTML += "</td>";
+        strHTML += "</tr>";
+    }
+    strHTML += "</table>";
+    document.getElementById("DIV_list").innerHTML = strHTML;
+	sortables_init();
+	
+}
+function runMSTSC(nItem) {
+	var ip = G_arServers[ nItem ].m_strIP;
+	File="mstsc.exe /v:" + ip;
+	WSH=new ActiveXObject("WScript.shell");
+	WSH.run(File);
+}
+function setConnectionText( strMessage )
+{
+    document.getElementById("DIV_connection_state").innerHTML = strMessage;
+}
+
+function clickIt( obj, strFile, bPressed, nDebug )
+{
+    obj.bPressed = bPressed;
+    var str = 'document.all.' + obj.name + '.src = "' + strFile + '"';
+    eval( str );
+}
+
+</script>
+<object id="MaptiveX" width="1" height="1"
+     classid="CLSID:a5243cda-45bb-408e-8bb6-f999692c77a3"
+     codebase="HMX.ocx"></object>
+<center>
+<img src="hyperms-small.gif" /><br><hr>
+<font size="2" face="Arial">HyperGateway Servers Address List (<a href='javascript:addServers();' class='MyLink'> Add </a>)</font>
+<hr>
+<font face="Arial">
+<div id="AddServer"></div>
+<div id="DIV_list"></div>
+</font>
+</center>
+</BODY>
+</HTML>

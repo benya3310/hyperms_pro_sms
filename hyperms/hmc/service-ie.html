@@ -1,0 +1,938 @@
+
+<html>
+<head><META HTTP-EQUIV="X-UA-COMPATIBLE" CONTENT="IE=EMULATEIE8"></head>
+
+<STYLE type=text/css>
+TABLE.noborder {
+    BORDER-RIGHT: #000000 0px solid; BORDER-TOP: #000000 0px solid; BORDER-LEFT: #000000 0px solid; BORDER-BOTTOM: #000000 0px solid; border-spacing: 0px; cell-spacing: 0px
+}
+
+TABLE {
+    BORDER-RIGHT: #000000 1px solid; BORDER-TOP: #000000 1px solid; BORDER-LEFT: #000000 1px solid; BORDER-BOTTOM: #000000 1px solid; border-spacing: 0px; cell-spacing: 0px
+}
+
+TD {
+    PADDING-RIGHT: 0.5em; PADDING-LEFT: 0.5em; FONT-SIZE: 10pt; PADDING-BOTTOM: 2px; PADDING-TOP: 2px; FONT-FAMILY: Arial, Helvetica, sans-serif; WHITE-SPACE: nowrap
+}
+
+a:link {color: #0000ff; text-decoration: none; }
+a:active {color: #0000ff; text-decoration: none; }
+a:visited {color: #0000ff; text-decoration: none; }
+a:hover {color: #00dd00; text-decoration: none; }
+</STYLE>
+<link type="text/css" href="utils/mb.css" rel="stylesheet">
+<SCRIPT language="javascript" src="utils/mb.js"></SCRIPT>
+<SCRIPT language="javascript" src="utils/vutils.js"></SCRIPT>
+<SCRIPT language="javascript" src="utils/utilfuncs.js"></SCRIPT>
+<SCRIPT language="javascript" src="utils/alloc_logic.js"></SCRIPT>
+<SCRIPT language="javascript" src="utils/mb.js"></SCRIPT>
+<script language="JavaScript" for="MaptiveX" EVENT="HMXEvent( strEvent )">
+<!--
+    HandleSessionMessageEx(strEvent)
+//-->
+</script>
+
+<body bgcolor="#eeeef0" onLoad="init();">
+
+<div id="id_mbsection"></div>
+
+<script type="text/javascript">
+
+function init()
+{
+    initmb();          // messagebox (mb.js)
+    displayServer();   // connection & status information
+    if (typeof(initSendData) != "undefined")
+        initSendData();
+}
+
+var G_arSerNum2CardName = new Array;
+G_arSerNum2CardName[ "003" ] = "MG";
+G_arSerNum2CardName[ "006" ] = "PC";
+G_arSerNum2CardName[ "008" ] = "PM";
+G_arSerNum2CardName[ "011" ] = "CB";
+G_arSerNum2CardName[ "012" ] = "PRI2.2";
+G_arSerNum2CardName[ "014" ] = "HBD";
+G_arSerNum2CardName[ "015" ] = "PRI2.1";
+G_arSerNum2CardName[ "017" ] = "S-HUB";
+G_arSerNum2CardName[ "018" ] = "SU";
+G_arSerNum2CardName[ "019" ] = "HBS";
+G_arSerNum2CardName[ "020" ] = "HBN";
+G_arSerNum2CardName[ "022" ] = "PC";
+G_arSerNum2CardName[ "025" ] = "MC1.0";
+G_arSerNum2CardName[ "026" ] = "MC1.1";
+G_arSerNum2CardName[ "027" ] = "MC1.2";
+G_arSerNum2CardName[ "033" ] = "MC0.0";
+
+var g_bConnected = false;
+var G_nID = 0;
+
+var G_arVersions;
+var G_arSerials;
+var G_arModules;
+var G_arRealSlot;
+var G_sgwVer = "";
+var G_ServerSlot;
+
+var G_arHistory = new Array();
+var G_nLast = 0;
+
+var G_nLastSlotNum = 32;
+
+/*
+document.onkeyup = KeyCheck;
+
+function KeyCheck(e)
+{
+   var nKeyID = (window.event) ? event.keyCode : e.keyCode;
+    if ( nKeyID == 13 )
+    {
+        startConnection();
+    }
+}
+*/
+
+function ConnectKeyCheck()
+{
+  if (window.event && window.event.keyCode == 13)
+    startConnection();
+  else
+    return true;
+}
+
+function SendPacketKeyCheck()
+{
+    if (window.event && window.event.keyCode == 13)
+        sendPacket();
+    else
+        return true;
+}
+
+var G_strServerIP;
+var G_strServerPass = "";
+var G_strFirstLogin;
+function displayServer()
+{
+    var packStr = new PacketString( parent.location.href );
+    var strServerIP = packStr.getSection( "a" );
+    var strPort     = packStr.getSection( "p" );
+    G_strServerPass = packStr.getSection( "pass" );
+    G_strFirstLogin = packStr.getSection( "first" );
+    var strName     = packStr.getSection( "n" );
+    if ( strName != null )
+    {
+        strName = URLDecode( strName );
+    }
+
+    if ( strServerIP == null )
+    {
+        strServerIP = MaptiveX.Send( "GetServerIP" );
+    }
+
+    if ( strPort != null )
+    {
+        document.getElementById( "remotePort" ).value = strPort;
+    }
+
+    G_strServerIP = strServerIP;
+
+    if ( strServerIP == "127.0.0.1" )
+    {
+        strServerIP = "Local host";
+    }
+
+    if ( strName != null )
+    {
+        document.title = "Service/" + strName;
+    }
+    else
+    {
+        document.title = "Service/" + strServerIP;
+    }
+
+    document.getElementById( "remoteServer" ).innerHTML = "Server at: <b>" + strServerIP + "</b>";
+    document.getElementById( "DIV_replyFrom" ).innerHTML = "Reply from <b>" + strServerIP + ":</b>";
+    startAutoConnection();
+}
+
+function getSerialNumbers()
+{
+    SendCommand( "SendGenericPacket 53:/I998/A0" );
+}
+
+function getVersionInfo()
+{
+    SendCommand( "SendGenericPacket 85:/I999/G/A0" );
+}
+
+function getAdditionalModules()
+{
+    SendCommand( "SendGenericPacket 65:/I997/Q1/A0" );
+}
+
+function getSubVersionInfo()
+{
+    for (var i=0 ; i<=G_nLastSlotNum ; i++)
+    {
+        if ( typeof G_arSerials[ i ] != 'undefined' )
+        {
+            if ( G_arSerials[ i ].indexOf( "017" ) == 0 )           // S-HUB
+            {
+                SendCommand( "SendGenericPacket 85:/x2/I996/G/A" + (i + 0x20).toString(16) );
+            }
+        }
+    }
+}
+
+var g_bWarrantyRequested = false;
+
+function countDown( counter )
+{
+    var cdisplay = "";
+    if (counter > 0)
+    {
+        cdisplay += counter;
+        setTimeout( "countDown("+(counter-1)+")", 1000 );
+    }
+    else
+    {
+        document.getElementById( "idProgress" ).innerHTML = "";
+        if (g_bWarrantyRequested)
+            sendWarrantyRequest();
+    }
+    document.getElementById( "idCountDown" ).innerHTML = cdisplay;
+}
+
+function cardDiag()
+{
+    if (!g_bConnected)
+    {
+        alert( "Not Connected." );
+        return;
+    }
+    var obj = document.getElementById( "idProgress" );
+    if (obj.innerHTML != "")
+    {
+        alert( "Please wait until data collection is completed" );
+        return;
+    }
+    if ( g_bWarrantyRequested )
+    {
+        document.getElementById( "idProgress" ).innerHTML = "<img src='utils/arrows.gif'></img>";
+        setTimeout( "countDown(8)", 1000 );
+    }
+    document.getElementById("DIV_TableInfo").innerHTML = "";
+
+    G_arVersions    = new Array();
+    G_arSerials     = new Array();
+    G_arModules     = new Array();
+    G_arRealSlot    = new Array();
+    G_sgwVer        = "";
+
+    SendCommand( "SendGenericPacket 53:/I987/AFF" );
+    SendCommand( ".GetCardInfo /AMG/I989" );
+    setTimeout( "getVersionInfo()",        250 );
+    setTimeout( "getSerialNumbers()",     2000 );
+    setTimeout( "getAdditionalModules()", 3000 );
+    setTimeout( "getSubVersionInfo()",    4000 );
+}
+
+G_arClearCommands = new Array();
+G_nClearCommandsIndex = 0;
+
+function resetAllCards()
+{
+    var arCardNames = G_configInfo.getCardNames();
+    for (var i=0; i<arCardNames.length; i++)
+    {
+        var strCardName = arCardNames[ i ];
+        strAddr = G_configInfo.name2Addr( strCardName );
+        var strCommand = "SendGenericPacket 75:/I992/A" + strAddr;
+        SendCommand( strCommand );
+    }
+}
+
+function deleteAllLinks()
+{
+    if (!g_bConnected)
+    {
+        alert( "Not Connected." );
+        return;
+    }
+
+    var nCommandIndex = 0;
+
+    var strPrompt = "This will permanently delete all links on all the cards.\n";
+    strPrompt += "Are you sure you wish to continue ?";
+    if (!confirm( strPrompt ))
+    {
+        return;
+    }
+
+    strE1Empty = "";
+    var arCardNames = G_configInfo.getCardNames();
+    for (var i=0; i<arCardNames.length; i++)
+    {
+        var strCardName = arCardNames[ i ];
+        strAddr = G_configInfo.name2Addr( strCardName );
+        strType = strCardName.split( "." )[ 0 ];
+        var strCommand = "-";
+        switch ( strType )
+        {
+            case "CG4":
+            {
+                // Clear bus links
+                strCommand = "SendGenericPacket 77:/I991/A" + strAddr;
+                strCommand += "/G,,,";
+                G_arClearCommands[ nCommandIndex++ ] = strCommand;
+                // Clear I2C links
+                strCommand = "SendGenericPacket 78:/I991/A" + strAddr;
+                strCommand += "/G,,,";
+                G_arClearCommands[ nCommandIndex++ ] = strCommand;
+                break;
+            }
+
+            case "E1":
+            {
+                // Clear bus links
+                strCommand = "SendGenericPacket 77:/I991/A" + strAddr;
+                strCommand += "/G,,,,,,,,,,,,,,,,,,,,,,,,,,,,,";
+                G_arClearCommands[ nCommandIndex++ ] = strCommand;
+                // Clear I2C links
+                strCommand = "SendGenericPacket 78:/I991/A" + strAddr;
+                strCommand += "/G,,,,,,,,,,,,,,,,,,,,,,,,,,,,,";
+                G_arClearCommands[ nCommandIndex++ ] = strCommand;
+                break;
+            }
+        }
+    }
+
+    if ( G_arClearCommands.length > 0 )
+    {
+        SendCommand( G_arClearCommands[ 0 ] );
+    }
+}
+
+var G_strPass;
+
+function startConnection()
+{
+    G_strPass = document.getElementById( "password" ).value;
+    var strPort = document.getElementById( "remotePort" ).value
+    if ( strPort == "" )
+    {
+        return;
+    }
+
+    setConnectionText( "Connecting to server..." );
+    sendLocalCommand( 'ConnectToAddress ' + G_strServerIP + " " + strPort );
+}
+function startAutoConnection()
+{
+
+    if ( G_strFirstLogin != null || G_strServerPass == null )
+    {
+        return;
+    }
+    G_strPass = G_strServerPass;
+    var strPort = document.getElementById( "remotePort" ).value
+    if ( strPort == "" )
+    {
+        return;
+    }
+
+    setConnectionText( "Connecting to server..." );
+    sendLocalCommand( 'ConnectToAddress ' + G_strServerIP + " " + strPort );
+}
+function setConnectionText( strText )
+{
+    document.getElementById("DIV_Reply").innerHTML = strText;
+}
+
+function SendCommand( strMessage )
+{
+    var strSendLine = "SendLineToServer " + strMessage;
+    var strReply = MaptiveX.Send( strSendLine );
+    return strReply;
+}
+
+function buildInfoTable()
+{
+    var strHTML = "<table  id='idInfoTable' border='1' rules='rows'><tr bgcolor='#eeeeff'><td><b>Slot</b></td><td><b>Card Type</b></td><td width=260><b>Versions</b></td><td width=70><b>Serial #</b></td><td><b>I2C Addr.</b></td><td colspan='4' align='center' width=560><b>Additional Modules</b></td></tr>";
+    for (var j=0; j<=G_nLastSlotNum; j++)
+    {
+        if ( ( typeof G_arRealSlot[ j ] != 'undefined' ) && ( G_arRealSlot[ j ] != j ) )
+        {
+            continue;
+        }
+
+        for (var i=0 ; i<=G_nLastSlotNum ; i++)
+        {
+
+            if ( ( typeof G_arRealSlot[ i ] == 'undefined' ) || ( G_arRealSlot[ i ] != j ) )
+            {
+                continue;
+            }
+
+            if ( ( typeof G_arVersions[ i ] == 'undefined' ) && ( typeof G_arSerials[ i ] == 'undefined' ) && ( typeof G_arModules[ i ] == 'undefined' ) )
+            {
+                continue;
+            }
+
+            var strVersion  = "-";
+            var strSerial   = "-";
+            var strModules  = "";
+            var arRealSlot  = "";
+            var UsedModuleCells = 0;
+
+            var nCardAddr = i + 0x20;
+            var strAddr = nCardAddr.toString( 16 );
+            var strCardName = G_configInfo.addr2Name( strAddr );
+            var re;
+
+            if ( typeof G_arVersions[ i ] != 'undefined' )
+            {
+                strVersion = G_arVersions[ i ];
+            }
+            if ( typeof G_arSerials[ i ] != 'undefined' )
+            {
+                strSerial = G_arSerials[ i ];
+            }
+            if (typeof strCardName == 'undefined')
+            {
+                strCardName = "-";
+            }
+
+            arRealSlot = G_arRealSlot[ i ];
+
+            re = /\(\d+\)/;
+            strCardName = strCardName.replace( re, "" );
+            re = /CG4.0/;
+            strCardName = strCardName.replace( re, "CG4.1" );
+            re = /E1.0/;
+            strCardName = strCardName.replace( re, "PRI1.1" );
+            re = /T1.0/;
+            strCardName = strCardName.replace( re, "PRI1.1 - T1" );
+
+            for ( var strKey in G_arSerNum2CardName )
+            {
+                if ( strSerial.indexOf( strKey ) == 0 )
+                {
+                    strCardName = G_arSerNum2CardName[ strKey ];
+                }
+            }
+
+            if ( typeof G_arModules[ i ] != 'undefined' )
+            {
+                if ( ( strCardName == "CG4.1" ) || ( strCardName == "CU4.1" ) || ( strCardName == "CC4.0" ) || ( strCardName == "CC4.2" ) )
+                {
+                    strModules = "<td bgcolor='#c0c0c0' align='center' width=135>" + G_arModules[ i ];
+                    re = /,/;
+                    strModules = strModules.replace( re, "</td><td bgcolor='#c0c0c0' align='center' width=135>" );
+                    strModules = strModules.replace( re, "</td><td bgcolor='#c0c0c0' align='center' width=135>" );
+                    strModules = strModules.replace( re, "</td><td bgcolor='#c0c0c0' align='center' width=135>" );
+                    strModules += "</td>";
+                    UsedModuleCells += 4;
+                }
+
+                else if ( ( strCardName == "AN4.4" ) || ( strCardName == "QBRI" ) || ( strCardName == "HBD" ) || ( strCardName == "HBS" ) ||
+                          ( strCardName == "MC1.1" ) || ( strCardName == "MC1.2" ) )
+                {
+                    strModules = "<td bgcolor='#c0c0c0' colspan='2' align='center' width=270>" + G_arModules[ i ] + "</td>";
+                    UsedModuleCells += 2;
+                }
+
+                else if ( strCardName == "S-HUB" )
+                {
+                    strModules = "<td bgcolor='#c0c0c0' align='center' width=135>" + G_arModules[ i ];
+                    re = /"/g;
+                    strModules = strModules.replace( re, "" );
+                    re = /,/g;
+                    strModules = strModules.replace( re, "</td><td bgcolor='#c0c0c0' align='center' width=135>" );
+                    strModules += "</td>";
+                    UsedModuleCells += 3;
+                }
+            }
+
+            else
+            {
+                if ( ( strCardName == "CG4.1" ) || ( strCardName == "CU4.1" ) || ( strCardName == "CC4.0" ) || ( strCardName == "CC4.2" ) )
+                {
+                    for (var x=0 ; x<4 ; x++)
+                    {
+                        strModules += "<td bgcolor='#c0c0c0' align='center' width=135>-</td>";
+                    }
+                    UsedModuleCells = 4;
+                }
+            }
+
+            if ( ( i == G_ServerSlot ) && ( G_sgwVer != "" ) )
+            {
+                strModules += "<td bgcolor='#c0c0c0' colspan='2' align='center' width=270>" + G_sgwVer + "</td>"
+                UsedModuleCells += 2;
+            }
+
+            if ( UsedModuleCells < 4 ) strModules += "<td bgcolor='#c0c0c0' colspan='" + (4 - UsedModuleCells) + "' align='center' width=" + (135 * (4 - UsedModuleCells)) + ">-</td>"
+
+            strHTML += "<tr bgcolor='#dedeff'><td>"
+            if ( ( i == j ) || ( typeof G_arRealSlot[ j ] == 'undefined' ) )
+            {
+                strHTML += ((arRealSlot % 16 == 0) ? '-' : arRealSlot) + "</td><td>" + strCardName;
+            }
+            else
+            {
+                strHTML += "</td><td>";
+            }
+            strHTML += "</td><td>" + strVersion + "</td><td bgcolor='#ffffbb'>" + strSerial + "</td>";
+            strHTML += "<td align='center' " + (( i == G_ServerSlot ) ? "bgcolor='#c8c8ff'>" : ">") + strAddr + "</td>" + strModules + "</tr>";
+        }
+    }
+    strHTML += "</table>";
+    return strHTML;
+}
+
+function HandleSessionMessageEx(strMessage)
+{
+
+    var strCommand = new String( strMessage );
+    var arParam = strCommand.split( " " );
+    var strCmd = arParam[ 0 ];
+
+    if ( strMessage == "AuthError" )
+    {
+       if ( G_strFirstLogin == null && G_strServerPass != null)
+            {
+                parent.location.href = parent.location.href + "/firstno";
+            }
+    }
+
+    if ( strCmd == "Connected" )
+    {
+        var strCmd = "PASS " + G_strPass;
+        SendCommand( strCmd );
+        setConnectionText( "Connected" );
+        return;
+    }
+
+    if ( strCmd == "Authenticated" )
+    {
+        g_bConnected = true;
+        setConnectionText( "Connected" );
+        SendCommand( "GetGWConfig" );
+        document.getElementById( "DIV_Connect" ).innerHTML = "";
+        return;
+    }
+
+    if ( strCmd == "ConnectError" )
+    {
+        setConnectionText( "Error connecting" );
+        return;
+    }
+
+    if ( strCmd == ".GetCardInfoReply" )
+    {
+        var packStr = new PacketString( arParam[ 1 ] );
+        var strID = packStr.getSection( "I" );
+        if (strID == "989")
+        {
+            G_sgwVer = packStr.getSection( "g" );
+            var re = /[A-Za-z0-9\.]+;\w+;\w+;/;
+            G_sgwVer = G_sgwVer.replace( re, "signalgw-" );
+        }
+        return;
+    }
+
+    if ( arParam.length > 1 )
+    {
+        var packStr = new PacketString( arParam[ 1 ] );
+        var strID = packStr.getSection( "I" );
+        if ( (strID == "999") || (strID == "998") || (strID == "997") || (strID == "987") || (strID == "996") )
+        {
+            var strAddr;
+            var nSlot;
+            var strInfo;
+            var strInfoType;
+            if( strID == "987" )
+            {
+                StrInfo = packStr.getSection( "#" );
+                if ( StrInfo == "54" )
+                {
+                    strAddr = packStr.getSection( "@" );
+                    G_ServerSlot = parseInt( strAddr, 16 ) - 0x20;
+                }
+            }
+            else if( strID == "997" )
+            {
+                strAddr = packStr.getSection( "A" );
+                nSlot = parseInt( strAddr, 16 ) - 0x20;
+                strInfo = packStr.getSection( "i" );
+                if (strInfo) G_arModules[ nSlot ] = strInfo;
+            }
+            else
+            {
+                strAddr = packStr.getSection( "@" );
+                nSlot = parseInt( strAddr, 16 ) - 0x20;
+                if ( strID == "998" )
+                {
+                    StrInfo = packStr.getSection( "#" );
+                    if ( StrInfo == "54" )
+                    {
+                        strInfo = packStr.getSection( "g" );
+                        G_arSerials[ nSlot ] = strInfo;
+                    }
+                }
+                else
+                {
+                    StrInfo = packStr.getSection( "#" );
+                    if ( StrInfo == "85" )
+                    {
+                        strInfo = packStr.getSection( "g" );
+                        if ( strInfo != null )
+                        {
+                            var strSubAddr = packStr.getSection( "x" );
+                            if ( ( strSubAddr == null ) || ( parseInt( strSubAddr.charAt( 2 ), 10 ) < 2 ) )
+                            {
+                                G_arVersions[ nSlot ] = strInfo;
+                                strInfo = packStr.getSection( "i" );
+                                if ( ( strInfo != null ) && ( strInfo != "" ) )
+                                {
+                                    G_arRealSlot[ nSlot ] = parseInt( strInfo, 10 );
+                                }
+                                else
+                                {
+                                    G_arRealSlot[ nSlot ] = nSlot;
+                                }
+                            }
+                            else if ( strSubAddr.charAt( 2 ) == '2' )
+                            {
+                                strInfo = packStr.getSection( "g" );
+                                if (strInfo) G_arModules[ nSlot ] = strInfo;
+                            }
+                        }
+                    }
+                }
+            }
+
+            /*
+            var strCardInfo = "<b>" + strCard + "</b> " + ":&nbsp" + strInfo + "<br>";
+            */
+
+            var strHTML = buildInfoTable();
+            document.getElementById( "DIV_TableInfo" ).innerHTML = strHTML;
+
+            return;
+        }
+
+        if ( strID == "991" )
+        {
+            if ( arParam[ 0 ] == "GWError" )
+            {
+                strMessage += "- Clear cards did not complete successfully."
+                document.getElementById("DIV_Reply").innerHTML = strMessage;
+                G_nClearCommandsIndex = 0;
+                G_arClearCommands = new Array();
+                return;
+            }
+
+            G_nClearCommandsIndex++;
+            if ( G_nClearCommandsIndex < G_arClearCommands.length )
+            {
+                SendCommand( G_arClearCommands[ G_nClearCommandsIndex ] );
+            }
+            else
+            {
+                resetAllCards();
+                G_nClearCommandsIndex = 0;
+                G_arClearCommands = new Array();
+            }
+        }
+    }
+
+    if ( arParam[0] == "GWConfigInfo" )
+    {
+        var packStr = new PacketString( arParam[1] );
+        G_configInfo.processConfigInfo( packStr );
+        strMessage = new String( packStr.getSection( "c" ) );
+        strMessage = replaceAll( strMessage, "|", "&nbsp&nbsp&nbsp" );
+    }
+
+//  var strParam = arParam[1];
+//  var strAscii = "";
+
+//  for (var i=0; i<strParam.length; i++)
+//  {
+//     strAscii += "-" + strParam.charCodeAt( i ).toString(16);
+//  }
+    document.getElementById("DIV_Reply").innerHTML = strMessage/* + "(" + strAscii + ")"*/;
+}
+
+function HandleSessionErrorEx(ErrNumber, ErrDescription)
+{
+    alert(ErrDescription);
+}
+
+function sendLocalCommand( strCommand )
+{
+    var strReply = MaptiveX.Send( strCommand );
+    return strReply;
+}
+
+function sendPacket()
+{
+    if (!g_bConnected)
+    {
+        alert( "Not Connected." );
+        return;
+    }
+
+    var strCardAddr     = document.getElementById("I2CDest").value;
+    var strOpCode       = document.getElementById("Opcode").value;
+    var strPackStr      = document.getElementById("PackStr").value;
+
+    var historyObject = new Object();
+    historyObject.m_strCardAddr = strCardAddr;
+    historyObject.m_strOpCode = strOpCode;
+    historyObject.m_strPackStr = strPackStr;
+    G_arHistory.push( historyObject );
+    G_nLast = G_arHistory.length-1;
+
+    var strCommand = "SendGenericPacket ";
+    strCommand += strOpCode;
+    strCommand += ":/A";
+    strCommand += strCardAddr;
+    strCommand += strPackStr;
+
+    SendCommand( strCommand );
+    document.getElementById("DIV_Reply").innerHTML = "Command sent, waiting for reply...";
+}
+
+function forward()
+{
+    if ( G_arHistory.length == 0 )
+    {
+        return;
+    }
+
+    G_nLast++;
+    if ( G_nLast == G_arHistory.length )
+    {
+        G_nLast--;
+    }
+
+    var obj = G_arHistory[ G_nLast ];
+
+    displayHistoryObj( obj );
+}
+
+function back()
+{
+    if ( G_arHistory.length == 0 )
+    {
+        return;
+    }
+
+    G_nLast--;
+    if ( G_nLast == -1 )
+    {
+        G_nLast = 0;
+    }
+
+    var obj = G_arHistory[ G_nLast ];
+
+    displayHistoryObj( obj );
+}
+
+function displayHistoryObj( obj )
+{
+    if ( G_arHistory.length == 0 )
+    {
+        return;
+    }
+
+    document.getElementById("I2CDest").value = obj.m_strCardAddr;
+    document.getElementById("Opcode").value = obj.m_strOpCode;
+    document.getElementById("PackStr").value = obj.m_strPackStr;
+}
+
+function clickIt( obj, strFile, bPressed, nDebug )
+{
+    obj.bPressed = bPressed;
+    var str = 'document.all.' + obj.name + '.src = "' + strFile + '"';
+    //if (nDebug==1) alert(str);
+    eval( str );
+}
+
+function setLogLevel()
+{
+    G_nID %= 1000;
+    G_nID++;
+    var strLogLevel     = document.getElementById("LogLevel").value;
+    var strCommand = "SetLogLevel /I" + G_nID + "/G" + strLogLevel;
+    SendCommand( strCommand );
+}
+
+function sendFullCommand()
+{
+    G_nID %= 1000;
+    G_nID++;
+    var strCommand     = document.getElementById("command").value;
+    //alert( strCommand );
+    SendCommand( strCommand );
+}
+
+String.prototype.repeat = function(n) {
+    return new Array(1 + n).join(this);
+}
+
+function extendWarranty()
+{
+    if (!g_bConnected)
+    {
+        if ( typeof(warrantyCheck)=="function" )
+        {
+            warrantyCheck("");
+            return;
+        }
+        alert( "Not Connected" );
+        return;
+    }
+
+    g_bWarrantyRequested = true;
+    cardDiag();
+}
+
+function sendWarrantyRequest()
+{
+    g_bWarrantyRequested = false;
+    var oTable = document.getElementById( "idInfoTable" );
+    var line = "";
+    var strTable = "_".repeat(80);
+
+    var oTable = document.getElementById( "idInfoTable" );
+    var line = "";
+    if (oTable)
+    {
+        var max = oTable.rows.length;
+        line = "?p=";
+        for (var loop=1; loop<max; loop++)
+        {
+
+            var ctype  = oTable.rows[loop].cells[1].innerHTML;
+            var serial = oTable.rows[loop].cells[3].innerHTML;
+            if (line != "?p=")
+            {
+                line += "_";
+            }
+            line += ctype + ":" + serial;
+        }
+    }
+
+    if ( typeof(warrantyCheck)=="function" )
+    {
+        warrantyCheck(line);
+        return;
+    }
+
+    line = escape(line);
+    var strURL = 'mailto:sales@hyperms.com?subject=Warranty Request';
+    strURL += '&body=I would like to renew my software warranty. My contact information:'
+    strURL += '%0D%0AName:%0D%0APhone:%0D%0A';
+    strURL += strTable + '%0D%0A';
+    strURL += 'Product Data (for Hypermedia Sales):%0D%0A' + line;
+    window.open(strURL);
+}
+
+</script>
+<table class="noborder" width="400"><tr><td><IMG height=42 width=190 alt=HyperMS src="hyperms-small.gif"></td><td><font size="4">&nbsp;&nbsp;Service Console</font></td></tr></table>
+<object id="MaptiveX" width="1" height="1"
+     classid="CLSID:a5243cda-45bb-408e-8bb6-f999692c77a3"
+     codebase="HMX.ocx"></object>
+<font face="Arial" size="2">
+<div id="DIV_Connect">
+<br><table width="400"><tr valign="center">
+<td id="remoteServer"></td>
+<td>Use port:</td>
+<td><input id="remotePort" type="text" size="4" value="8878" onkeyup="return ConnectKeyCheck()"></input></td>
+<td>
+    <img name="bnext" src="./screens/Up-Connect.jpg"
+    onmousedown="clickIt( this, './screens/Down-Connect.jpg', 1 );"
+    onmouseup="if (this.bPressed==1) {clickIt( this, './screens/Up-Connect.jpg', 0 ); startConnection(); }"
+    onMouseOver="style.cursor='hand'"
+    onmouseout="clickIt( this, './screens/Up-Connect.jpg', 0 );">
+</td>
+<td>
+Password <input id="password" type="password" size="10" onkeyup="return ConnectKeyCheck()"></input>
+</td>
+</tr></table>
+<br>
+</div>
+
+<table width="400" border="0" name="info">
+<tr>
+    <td>I2C Destination</td>
+    <td><INPUT TYPE=TEXT size=10 name="I2CDest" onkeyup="return SendPacketKeyCheck()"></td>
+<tr>
+<tr>
+    <td>Opcode</td>
+    <td><INPUT TYPE=TEXT size=10 name="Opcode" onkeyup="return SendPacketKeyCheck()"></td>
+<tr>
+<tr>
+    <td>Packet String</td>
+    <td><INPUT TYPE=TEXT size=32 name="PackStr" onkeyup="return SendPacketKeyCheck()"></td>
+<tr>
+</table>
+<br>
+<table><tr><td>
+Log Level</td><td><input type="text" size="3" name="LogLevel">&nbsp;&nbsp;<A href='javascript:setLogLevel()'>Set</A></td>
+</td></tr><tr><td>
+Full Command</td><td><input type="text" size="35" name="command">&nbsp;&nbsp;<A href='javascript:sendFullCommand()'>Send</A>
+</td></tr></table>
+<br>
+<table bgcolor='beige'>
+<tr>
+    <td>
+        <A href='javascript:sendPacket()'>Send Packet</A>
+    </td>
+    <td>
+        <A href='javascript:cardDiag()'>All Card Diagnostics</A>
+    </td>
+    <td>
+        <span id="id_SendData"></span>
+    </td>
+    <td>
+        <A href='javascript:deleteAllLinks()'>Delete All Card Links</A>
+    </td>
+    <!--
+    <td>
+        <A href='javascript:extendWarranty()'>Extend Warranty</A>
+    </td>
+    -->
+    <td id="idCountDown">
+    </td>
+    <td id="idProgress">
+    </td>
+</tr>
+</table>
+
+<br><br>
+<table border=0><tr><td width=50>History</td>
+<td width=50>
+<A href='javascript:back()'><b><center><<</center></b></A>
+</td>
+<td width=50>
+<A href='javascript:forward()'><b><center>>></center></b></A>
+</td>
+</tr>
+</table>
+<br>
+<hr>
+<div id="DIV_replyFrom"></div>
+<br>
+<div id="DIV_Reply">
+</div>
+<hr>
+<div id="DIV_TableInfo"></div>
+<hr>
+</font>
+</body>
+</html>

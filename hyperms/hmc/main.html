@@ -1,0 +1,57 @@
+<HTML>
+<head>
+<META HTTP-EQUIV="X-UA-COMPATIBLE" CONTENT="IE=EMULATEIE8">
+<link type="text/css" href="main.css" rel="stylesheet">
+<link type="text/css" href="utils/mb.css" rel="stylesheet">
+<script id="scriptreceiver"></script>
+<SCRIPT type="text/javascript" language="javascript" src="utils/rpc.js"></SCRIPT>
+<!-- do not remove the next file - alloc_logic.js is needed for Admin version of serials.js -->
+<SCRIPT type="text/javascript" language="javascript" src="utils/alloc_logic.js"></SCRIPT>
+<script type="text/javascript" language="javascript" src="utils/utilfuncs.js"></script>
+<SCRIPT type="text/javascript" language="javascript" src="utils/mb.js"></SCRIPT>
+<SCRIPT type="text/javascript" language="javascript" src="js/serials.js"></SCRIPT>
+
+<script>
+function init()
+{
+    var strMessage = parent.frames[0].getFolder();
+    strMessage = "<font face='Arial' size=2>" + strMessage + "</font>";
+    document.getElementById("DIV_folder_name").innerHTML = strMessage;
+    
+    var strText = parent.frames[0].getConnectionText();
+    document.getElementById("DIV_connection_state").innerHTML = strText;
+    
+    if ( typeof(init_main) == "function" )
+        init_main();
+}
+
+function setConnectionText( strMessage )
+{
+	var objElem = document.getElementById("DIV_connection_state");
+    if (objElem == null || typeof objElem == 'undefined')
+    {
+        return;
+    }
+     	
+    objElem.innerHTML = strMessage;
+}
+
+</script>
+</head>
+<BODY bgcolor="white" onselectstart="return false;" ondragstart="return false;" leftmargin=10 topmargin=0 marginwidth=10 marginheight=0 onLoad="setTimeout('init()',100);">
+<BR>
+<BR>
+<center>
+<IMG alt=HyperMS src="hyperms-large.jpg">
+<br><br>
+<br>
+<font size=3 face="Arial">
+<div id="DIV_folder_name"></div>
+<br>
+<br>
+<div id="DIV_connection_state"></div>
+<div id="id_mbsection"></div>
+</font>
+</center>
+</BODY>
+</HTML>

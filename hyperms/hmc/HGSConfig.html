@@ -1,0 +1,47 @@
+<HTML>
+<head><META HTTP-EQUIV="X-UA-COMPATIBLE" CONTENT="IE=EMULATEIE8"></head>
+<SCRIPT language=javascript src="utils/utilfuncs.js"></SCRIPT>
+<script>
+function sendLocalCommand( strCommand )
+{
+    var strReply = MaptiveX.Send( strCommand );
+    return strReply;
+}
+
+function loadIFrame()
+{
+	
+	var packStr = new PacketString( parent.location.href );
+	var strServerIP	= packStr.getSection( "a" );
+	var strPort		= packStr.getSection( "p" );
+	var strName		= packStr.getSection( "n" );
+	if ( strName != null )
+	{
+		strName = URLDecode( strName );
+	}
+
+	if ( strServerIP == null )
+	{
+		strServerIP = MaptiveX.Send( "GetServerIP" );
+	}
+	
+	if ( strName != null )
+	{
+		document.title = "Settings/" + strName;
+	}
+	else
+	{
+		document.title = "Settings/" + strServerIP;
+	}
+
+	document.getElementById('myIFrame').src = "http://" + strServerIP + "/cb/HGSConfig.php";
+}
+</script>
+<BODY onLoad="loadIFrame()">
+<object id="MaptiveX" width="1" height="1"
+     classid="CLSID:a5243cda-45bb-408e-8bb6-f999692c77a3"
+     codebase="HMX.ocx"></object>
+<div id="Note"></div>
+<IFRAME id="myIFrame" FRAMEBORDER="0" width="100%" height="100%">
+</BODY>
+</HTML>

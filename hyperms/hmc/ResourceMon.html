@@ -1,0 +1,436 @@
+<html>
+<head>
+<META HTTP-EQUIV="X-UA-COMPATIBLE" CONTENT="IE=EMULATEIE8">
+    <style type="text/css">
+        BODY {margin: 0pt; padding: 0pt; border: none;}
+        .Button {border:1px solid Green; font-family: Verdana; font-size: 10px;}
+        .TextBox {
+            border:solid 1px #A4A392; 
+            Width:50px; 
+            font-family: Verdana; 
+            font-size: 10px;
+        }
+        #iframename {width: 98%; border: none;}
+    </style>
+</head>
+
+<body bgcolor="#b3e8e8" onLoad="displayServer()" onResize="iFrameHeight();">
+
+<SCRIPT language=javascript src="utils/utilfuncs.js"></SCRIPT>
+
+<script language="JavaScript" for="MaptiveX" EVENT="HMXEvent( strEvent )">
+<!--
+    HandleSessionMessageEx(strEvent)
+//-->
+</script>
+<script language="JavaScript" for="CommnadX" EVENT="HMXEvent( strEvent )">
+<!--
+    HandleCommnadXReply(strEvent)
+//-->
+</script>
+<script type="text/javascript">
+var G_strConnectState = "NotConnected";
+var G_strConnectionText;
+var G_logWnd;
+var G_nLine = 0;
+var G_nConnected = 0;
+var G_nConnectedX = 0;
+var G_bNoScroll;
+var G_strPass;
+var G_strServerAddr = "";
+
+// This style will inserted into the iframe when its created
+var G_logHead = '' +
+    '<head>\n' +
+        '<style type="text/css">\n' +
+            'body {margin: 0; font-family: "Courier"; font-size: 90%;}\n' +
+            'p {margin: 0; padding: 0 0.5em 0 0.5em; width: 100%;}\n' +
+            'p.self {color: green; font-weight: bold;}\n' +
+            'p.sgw {color: blue;}\n' +
+            'p.debug {background-color: white;}\n' +
+            'p.info {background-color: #f8f8f8;}\n' + 
+            'p.notice {background-color: #f0f0f0;}\n' +
+            'p.warning {background-color: #ffffbf;}\n' +
+            'p.error {background-color: #ffbfbf;}\n' +
+            'p.critical {background-color: #ff8080; font-weight: bold;}\n' +
+            'p.alert {background-color: #ff4040; font-weight: bold;}\n' +
+            'p.emergency {bacground-color: #ff0000; font-weight: bold;}\n' +
+        '</style>\n' +
+    '</head>\n';
+    
+document.onkeyup = KeyCheck;       
+
+function KeyCheck(e)
+{
+   var nKeyID = (window.event) ? event.keyCode : e.keyCode;
+	if ( nKeyID == 13 )
+	{
+		startConnection();
+	}
+}
+
+function iFrameHeight()
+{
+	if (document.getElementById && !document.all)
+    {
+        var iframe = document.getElementById('iframename');
+        var height = iframe.contentDocument.body.scrollHeight;
+		iframe.style.height = height;
+	}
+	else if(document.all)
+	{
+		h = document.body.clientHeight - 100;
+		document.all.iframename.style.height = h;
+	}
+}
+
+var G_strServerPass = "";
+var G_strFirstLogin;
+var G_strReqI2cAddr;
+var	G_strReqResNum;
+
+function displayServer()
+{
+	var packStr = new PacketString( parent.location.href );
+	var strServerIP	= packStr.getSection( "a" );
+	var strPort		= packStr.getSection( "p" );
+	var strName		= packStr.getSection( "n" );
+    G_strServerPass = packStr.getSection( "pass" );
+    G_strFirstLogin = packStr.getSection( "first" );
+	G_strReqI2cAddr = packStr.getSection( "c" );
+	G_strReqResNum  = packStr.getSection( "r" );
+	if ( strName != null )
+	{
+		strName = URLDecode( strName );
+	}
+
+	if ( strServerIP == null )
+	{
+		strServerIP = MaptiveX.Send( "GetServerIP" );
+	}
+	
+	if ( strPort != null )
+	{
+		document.getElementById( "remotePort" ).value = strPort;
+	}
+	
+	G_strServerAddr = strServerIP;
+	if ( strServerIP == "127.0.0.1" )
+	{
+		strServerIP = "Local host";
+	}
+	
+	if ( strName != null )
+	{
+		document.title = "Resource Monitor on " + strName;
+	}
+	else
+	{
+		document.title = "Resource Monitor on " + strServerIP;
+	}
+
+	document.getElementById( "remoteServer" ).innerHTML = "<font face=\"Verdana\" size='2'>(" + strServerIP + ")</font>";
+    startAutoConnection();
+}
+
+function startAutoConnection()
+{
+    
+    //alert ( G_strFirstLogin + " - " + G_strServerPass );
+    if ( G_strFirstLogin != null || G_strServerPass == null || 	G_strReqI2cAddr == null || G_strReqResNum  == null )
+    {
+   		// alert("aborting auto connection....");
+        return;
+    }
+	
+    G_strPass = G_strServerPass;
+	var strPort = document.getElementById( "remotePort" ).value;
+	if ( strPort == "" )
+	{
+		return;
+	}
+	G_strI2cAddr = G_strReqI2cAddr;
+	G_strResNum  = G_strReqResNum;
+	
+	var nPort = parseInt( strPort );
+
+	G_logWnd = frames["logWindow"];
+	G_logWnd.document.open();
+	G_logWnd.document.writeln(G_logHead);
+    //setConnectionText( "Connecting to server..." );
+	var strConnect = "ConnectToAddress " + G_strServerAddr + " " + (nPort + 1);  
+    sendLocalCommand( strConnect );
+	G_bNoScroll = document.getElementById( "scrollCheck" ).checked;
+}
+
+
+function startConnection()
+{
+	G_strPass = document.getElementById( "password" ).value;
+	var strPort = document.getElementById( "remotePort" ).value;
+	G_strI2cAddr = document.getElementById( "i2c_addr" ).value;
+	G_strResNum  = document.getElementById( "res_num" ).value;
+
+	if ( strPort == "" )
+	{
+		return;
+	}
+	
+	var nPort = parseInt( strPort );
+
+	G_logWnd = frames["logWindow"];
+    G_logWnd.document.open();
+	G_logWnd.document.writeln(G_logHead);
+    //setConnectionText( "Connecting to server..." );
+	var strConnect = "ConnectToAddress " + G_strServerAddr + " " + (nPort + 1);
+    sendLocalCommand( strConnect );
+    var strConnect2 = "ConnectToAddress " + G_strServerAddr + " " + nPort ;
+    CommnadX.Send(strConnect2);
+
+	G_bNoScroll = document.getElementById( "scrollCheck" ).checked;
+}
+
+function setConnectionText( strText )
+{
+    document.getElementById("DIV_Connect").innerHTML = "<font face=\"Verdana\" size=2>" + strText + "</font>";
+}
+
+function HandleCommnadXReply(strMessage)
+{
+	//alert(strMessage);
+	if ( strMessage.indexOf("Authenticated") == 0 )
+    {        
+		//G_logWnd.document.writeln( getCustomCommand() );  getCustomCommand();
+		CommnadX.Send( "SendLineToServer " + getCustomCommand() );
+        G_nConnectedX = 1;
+        return;
+    }
+	
+    if ( strMessage == "Connected" )
+    {
+        //setConnectionText( "Authenticating" );
+       
+		var strPassCmd = "PASS " + G_strPass;
+        CommnadX.Send( "SendLineToServer " + strPassCmd );
+       
+        return;
+    }
+    
+    if ( strMessage == "AuthError" )
+    {
+   
+        if ( G_strFirstLogin == null && G_strServerPass != null) 
+            {
+             
+                 parent.location.href = parent.location.href + "/firstno";
+            }
+        setConnectionText( "Authentication error" );
+        return;
+    }
+	
+    if ( strMessage == "Connect_Error" )
+    {
+        setConnectionText( "Error connecting" );
+        return;
+    }
+
+	//ignore reply
+	//G_logWnd.document.writeln( strMessage ); 
+	return;
+}
+function HandleSessionMessageEx(strMessage)
+{
+    
+    if ( strMessage == "Authenticated" )
+    {
+        //setConnectionText( "Connected to " + G_strServerAddr );
+		document.getElementById( "DIV_Connect" ).innerHTML = "";
+        G_nConnected = 1;
+        //time to open new socket
+        startAutoConnection();
+        return;
+    }
+	
+    if ( strMessage == "Connected" )
+    {
+        //setConnectionText( "Authenticating" );
+       
+		var strPassCmd = "PASS " + G_strPass;
+        SendCommand( strPassCmd );
+       
+        return;
+    }
+    
+    if ( strMessage == "AuthError" )
+    {
+   
+        if ( G_strFirstLogin == null && G_strServerPass != null) 
+            {
+             
+                 parent.location.href = parent.location.href + "/firstno";
+            }
+        setConnectionText( "Authentication error" );
+        return;
+    }
+	
+    if ( strMessage == "Connect_Error" )
+    {
+        setConnectionText( "Error connecting" );
+        return;
+    }
+
+	var re  = /Received Packet: GenericReply \/#8d/;
+	
+	var nLoc  = strMessage.search( re );
+	var nLoc2 = (G_strI2cAddr != 0) ? (strMessage.search( "@" + G_strI2cAddr + "/" )) : 0;
+	var nLoc3 = (G_strResNum  != 0) ? (strMessage.search( "/g" + G_strResNum + "," )) : 0;
+	if ( ( nLoc == -1 ) || ( nLoc2 == -1 ) || ( nLoc3 == -1 ) )
+	{
+		return;
+	}
+
+	re = /\[debug\]/;
+	strMessage = strMessage.replace( re, "" );
+	re = /\* Received Packet: GenericReply \/#8d\/@/;
+	strMessage = strMessage.replace( re, "" );
+	re = /\/x\d+,\d+/;
+	strMessage = strMessage.replace( re, "" );
+	re = /\/I\d+\/g/;
+	strMessage = strMessage.replace( re, "." );
+	re = /,/;
+	strMessage = strMessage.replace( re, " --> " );
+	re = /--> AT/;
+	strMessage = strMessage.replace( re, " <-- AT" );
+	re = /--> \\ConnectVsimCmd/;
+	strMessage = strMessage.replace( re, " <-- \\ConnectVsimCmd" );
+	
+	G_logWnd.document.writeln( strMessage ); 
+	G_nLine++;
+	if ( G_bNoScroll == false )
+	{
+		var nBottom = G_nLine * 30;
+		G_logWnd.scrollTo( 0, nBottom );
+	}
+}
+
+function SendCommand( strMessage )
+{
+
+	if ( G_nConnected == 0 )
+	{
+		//document.getElementById("DIV_Status").innerHTML = "Waiting for reply...";
+	}
+    var strSendLine = "SendLineToServer " + strMessage;
+    var strReply = MaptiveX.Send( strSendLine );
+    return strReply;
+}
+
+function sendLocalCommand( strCommand )
+{
+    var strReply = MaptiveX.Send( strCommand );
+    return strReply;
+}
+
+function toggleScroll()
+{
+	G_bNoScroll = document.getElementById( "scrollCheck" ).checked;
+	
+	if ( G_bNoScroll == false )
+	{
+		var nBottom = G_nLine * 30;
+		G_logWnd.scrollTo( 0, nBottom );
+	}
+}
+
+function clickIt( obj, strFile, bPressed, nDebug )
+{
+    obj.bPressed = bPressed;
+    var str = 'document.all.' + obj.name + '.src = "' + strFile + '"';
+    //if (nDebug==1) alert(str);
+    eval( str );
+}
+function clean()
+{
+    if ( G_logWnd != null )
+    {
+        G_logWnd.document.close();
+        G_logWnd.document.open();    
+        G_logWnd.document.writeln(G_logHead);
+    }
+}
+function getCustomCommand()
+{
+	//chek that user input is valid for sending cautom command
+    //(I2cAddr value,21 thru 3F and ResNum=1 thru 9)
+    var min = parseInt("21",16);
+    var max = parseInt("3F",16);
+    if ( parseInt(G_strI2cAddr,16) < min || parseInt(G_strI2cAddr,16) > max )
+   	{
+   		//alert("invalid I2C " + G_strI2cAddr);
+   		return;
+   	}
+   	if ( parseInt(G_strResNum) < 1 ||  parseInt(G_strResNum) > 9 )
+   	{
+   		//alert("invalid Res Num " + G_strResNum);
+   		return;
+   	}
+	return "SendGenericPacket 8d:/A" + G_strI2cAddr + "/r" +  G_strResNum + "/Q";
+}
+</script>
+
+
+<center>
+<table border='0'><tr>
+<td><b><font face="Verdana" size=2>Resource Monitor</b></td><td id="remoteServer"></font></td>
+<td><IMG height=42 align="center" alt="HyperMS" src="hyperms-small.gif"></td>
+<td align="right"><INPUT TYPE="CHECKBOX"  id="scrollCheck" onClick="toggleScroll();"><font face="Verdana" size=1>Pause scrolling</font></INPUT></td><td> &nbsp &nbsp </td>
+<!--<td align="center">|<td>-->
+<td align="right"><INPUT TYPE="BUTTON"  class="Button" id="btnClear" onClick="clean();" value="Clear"></INPUT></td><td> &nbsp &nbsp </td>
+<!--<td align="center">|<td>-->
+</tr></table>
+
+<!--<div id="DIV_Status"></div>-->
+<div id="DIV_Connect" >
+
+<table border="0"><tr valign="center">
+</td>
+</td>
+<td><font face="Verdana" size=2>
+I2C Addr&nbsp;&nbsp;<input  class="TextBox" id="i2c_addr" type="text" size="1" value="21"></input>
+</td>
+<td><font face="Verdana" size=2>
+&nbsp;&nbsp;&nbsp;Res #&nbsp;&nbsp;<input  class="TextBox" id="res_num" type="text" size="1" value="1"></input>
+</td>
+<td><font face="Verdana" size=2>
+&nbsp;&nbsp;&nbsp;Use Port&nbsp;&nbsp;<input  class="TextBox" id="remotePort" type="text" size="4" value="8878"></input>
+</td>
+<td><font face="Verdana" size=2>
+&nbsp;&nbsp;&nbsp;Password&nbsp;&nbsp;<input class="TextBox"  id="password" type="password" size="10"></input>
+</td>
+<td><INPUT TYPE="BUTTON" class="Button" id="btnConnect" onClick="startConnection();" value="Connect"></INPUT>
+	
+</td>
+</tr></table>
+</font>
+</div>
+
+</center>
+<object id="MaptiveX" width="1" height="1"
+     classid="CLSID:a5243cda-45bb-408e-8bb6-f999692c77a3"
+     codebase="HMX.ocx"></object>
+
+<!--secondary activx object for sending custom command-->
+<object id="CommnadX" width="1" height="1"
+     classid="CLSID:a5243cda-45bb-408e-8bb6-f999692c77a3"
+     codebase="HMX.ocx"></object>     
+<center>
+
+<!--<iframe src="http://localhost/" scrolling="no" scroll="no" id="iframename" marginwidth="0" marginheight="0" frameborder="0" style="width:100%;"></iframe>-->
+
+<IFRAME onLoad="iFrameHeight();" id="iframename" name="logWindow"> 
+</IFRAME>
+</center>
+</font>
+
+</body>
+</html>

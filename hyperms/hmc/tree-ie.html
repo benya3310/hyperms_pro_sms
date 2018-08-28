@@ -1,0 +1,476 @@
+<html>
+<head>
+<META HTTP-EQUIV="X-UA-COMPATIBLE" CONTENT="IE=EMULATEIE8">
+
+<link rel="StyleSheet" href="utils/dtree/dtree.css" type="text/css" />
+<script type="text/javascript" src="utils/dtree/dtree.js"></script>
+<script type="text/javascript" src="utils/utilfuncs.js"></script>
+<script type="text/javascript" src="hyperms/version_info.js"></script>
+<script type="text/javascript" src="hyperms/card.js"></script>
+<script type="text/javascript" src="hyperms/info.js"></script>
+
+<script language="JavaScript" for="MaptiveX" EVENT="HMXEvent( strEvent )">
+<!--
+    HMC.handle_message(strEvent)
+//-->
+</script>
+</head>
+<body onResize="HMC.resize_tree()"  bgcolor="#f0f0f0" onselectstart="return false;" ondragstart="return false;" >
+<script type="text/javascript">
+//on IE11 Nov2016 update the stacked when open by ServerList
+//instead of calling updateIP on body-onload, calling it with 100ms interval solved the issue
+//its seems that setTimeout waiting for DOM ready.yaniv.
+setTimeout(function(){ updateIP(); }, 100);
+
+
+//// Globals - used also by other modules
+
+// DO NOT ADD MORE GLOBALS!
+
+var G_map = new Array();
+
+//// Global functions - used from other modules
+
+function getContextData(strId) {
+    return HMC.map_context[strId];
+}
+
+function setContextData(strId, strHTML) {
+    return HMC.map_context[strId] = strHTML;
+}
+
+function getFolder() {
+    return HMC.selected_folder;
+}
+
+function getServerIP() {
+	return HMC.server_address;
+}
+
+function updateIP() {
+	var packStr = new PacketString( parent.location.href );
+	HMC.server_address	= packStr.getSection( "a" );
+
+    if ( HMC.server_address	!= null )
+    {
+        HMC.is_standalone   = false; 
+    }    
+
+    var strHTML = "";
+    if ( HMC.is_standalone )
+    {
+        strHTML += '<font face="Arial"><div id="DIV_Connect" onselectstart="return true;">';
+        strHTML += '<table><tr valign="center">';
+        strHTML += '<td>Use port:</td>';
+        strHTML += '<td><input id="remotePort" type="text" size="4" value="8878"></input></td>';
+        strHTML += '<td><img name="bnext" src="./screens/Up-Connect.jpg"';
+        strHTML += '	onmousedown="clickIt( this, \'./screens/Down-Connect.jpg\', 1 );"';
+        strHTML += '	onmouseup="if (this.bPressed==1) {clickIt( this, \'./screens/Up-Connect.jpg\', 0 ); HMC.start_connection(); }"';
+        strHTML += '	onMouseOver="style.cursor=\'hand\'" ';
+        strHTML += '	onmouseout="clickIt( this, \'./screens/Up-Connect.jpg\', 0 );">';
+        strHTML += '</td></tr></table></div></font>';
+    }
+    else
+    {
+        strHTML += '<font face="Arial"><div onselectstart="return true;">';
+        strHTML += '<table><tr valign="center">';
+        strHTML += '<td align="center" id="ServerName" width="160" bgcolor="#fefefe"></td>';
+        strHTML += '<td id="DIV_Connect">';
+        strHTML += '	<img name="bnext" src="./screens/Up-Connect.jpg"';
+        strHTML += '	onmousedown="clickIt( this, \'./screens/Down-Connect.jpg\', 1 );"';
+        strHTML += '	onmouseup="if (this.bPressed==1) {clickIt( this, \'./screens/Up-Connect.jpg\', 0 ); HMC.start_connection(); }"';
+        strHTML += '	onMouseOver="style.cursor=\'hand\'"';
+        strHTML += '	onmouseout="clickIt( this, \'./screens/Up-Connect.jpg\', 0 );">';
+        strHTML += '</td></tr></table></div></font>';
+    }
+    document.getElementById( "IdConnect" ).innerHTML = strHTML;
+    
+    if ( HMC.is_standalone )
+    {
+        HMC.server_address = sendLocalCommand( "GetServerIP" );
+        HMC.server_port = document.getElementById( "remotePort" ).value
+       	parent.document.title = "HMC/" + HMC.server_address;
+    }
+    else
+    {
+        HMC.server_port		= packStr.getSection( "p" );
+        HMC.server_password = packStr.getSection( "pass" );
+        HMC.password   = HMC.server_password;
+        HMC.first_login = packStr.getSection( "first" );
+   
+        var strName		= URLDecode( packStr.getSection( "n" ) );
+
+        parent.document.title = "HMC/" + strName;
+        document.getElementById( "ServerName" ).innerHTML = "<font size='2'>" + strName + "</font>";
+    }
+	document.getElementById( "DIV_HGSAddr" ).innerHTML = " Server Address: " + HMC.server_address;
+    
+    if (!HMC.is_standalone && HMC.first_login == null)
+        HMC.start_connection();
+    
+    HMC.resize_tree();
+}
+
+function getPassword() {
+	return HMC.password;
+}
+
+function getConnectionText() {
+    return HMC.connection_text;
+}
+
+function SendCommand( strMessage ) {
+    var strSendLine = "SendLineToServer " + strMessage;
+    var strReply = MaptiveX.Send( strSendLine );
+    return strReply;
+}
+
+// Used by screens/Srv-Settings-IPAddress.html
+function sendLocalCommand( strCommand ) {
+    var strReply = MaptiveX.Send( strCommand );
+    return strReply;
+}
+
+// Used by utils/dtree/dtree.js
+function onSelected( strTitle, strURL ) {
+	// Enable selection only if connection to the server has been established or if attempting to change the IP
+	// address of the server when not connected or after connect error (DeMorgan rules applied here...) .
+    if ( HMC.connection_state != "Connected" && (strURL != HMC.server_settings_url || (HMC.connection_state != "NotConnected" && HMC.connection_state != "ConnectedError") ) )
+    {
+        return 0;
+    }
+    
+    HMC.selected_folder = strTitle;
+    var nAccept = 1;
+    
+    // onPageChange does not work on ie 11 Nov 2016 security updates (KB3200970,KB3198586,KB3197868)
+    // i am skipping this issue. Yaniv.
+    try{
+        if (parent.frames[1].onPageChange)
+        {
+            nAccept = parent.frames[1].onPageChange();
+        }
+        
+        if ( nAccept == 0 )
+        {
+            return 0;
+        }
+    }
+    catch (err)
+    {        
+        //ignore error :)
+    }
+    //console.log(nAccept);
+    // User has accepted the page change
+    parent.frames[1].location.href = strURL;
+
+    // Inform the tree control that its ok to select the node
+    // (i.e highlight it).
+    return 1;
+}
+
+// Used everywhere
+function clickIt( obj, strFile, bPressed, nDebug ) {
+    obj.bPressed = bPressed;
+    var str = 'document.all.' + obj.name + '.src = "' + strFile + '"';
+    //if (nDebug==1) alert(str);
+    eval( str );
+}
+
+//// Static variables - used only in this module
+
+var HMC = {
+    info: null,         // Initialzied later when connected
+    handler: null,      // Handler for hgs messages
+
+    // Server info
+    server_address: null,
+    server_port: "8878",
+    server_password: "",
+    password: "",
+
+    map_context: {},
+    
+    // Connection info
+    connection_state: "NotConnected",
+    connection_text: "Not Connected",
+    first_login: null,
+    is_standalone: true,
+
+    // Tree info
+    selected_folder: "",//"<font face='Arial' size=2><i>Taking Voice to the Next Level</i></font><br>" + 
+                     //"<font size='1'>HMC version " + hyperms.version_info.string + "</font>",
+    server_settings_url: 'screens/Srv-Settings-IPAddress.html'
+};
+
+HMC.handle_message = function( msg ) {
+    //alert("msg = '" + msg + "'");
+    var pair = HMC.split_once(msg, " ");
+    var cmd = pair[0];
+    var rest = pair[1] || "";
+
+    switch (cmd) {
+
+        case "Authenticated":
+            HMC.connection_state = "Connected";
+            HMC.set_connection_text("Getting server info...");
+            HMC.hide_connect_button();
+            HMC.info = hyperms.info({delegate: HMC, timeout: 30000, auth_reply: rest});
+            HMC.handler = HMC.info;
+            HMC.info.start();
+            return;
+
+        case "AuthError":
+            HMC.connection_state = "NotConnected";
+            var error = HMC.render_error(
+                "Error authenticating to server", "Please check server password.");
+            HMC.set_connection_text(error);
+            if ( !HMC.is_standalone && HMC.first_login == null) {
+                parent.location.href = parent.location.href + "/firstno";
+            }
+            return;
+
+        case "Connected":
+            HMC.connection_state = "Authenticating";
+            HMC.set_connection_text("Authenticating...");
+            if (HMC.is_standalone) {
+                HMC.password = HMC.show_password_dialog();
+                HMC.authenticate(HMC.password);
+            } else if (HMC.first_login == null) {
+                HMC.authenticate(HMC.server_password);
+            } else {
+                HMC.password = HMC.show_password_dialog();
+                HMC.authenticate(HMC.password);
+            }
+            return;
+
+        case "Connect_Error":
+            HMC.connection_state = "ConnectError"
+            var error = HMC.render_error(
+                "Error connecting to server", "Please check server address.");
+            HMC.set_connection_text(error);
+            return;
+    }
+
+	var processSer = typeof(parent.frames[1].processSerials);
+	if (processSer == "function" )
+	{
+		parent.frames[1].processSerials( msg );
+	}
+    if (HMC.handler && HMC.handler.handle(cmd, rest))
+        return;
+
+	var onData = typeof(parent.frames[1].OnData);
+	if (onData != "undefined" && onData != "unknown")
+		parent.frames[1].OnData(msg);
+};
+
+// Called when info finshed to collect information from hgs and we can render
+// the connection text.
+HMC.info_did_finish = function(handler) {
+    if (HMC.handler === handler) {
+        HMC.handler = null; 
+        HMC.finish_connection();
+    }
+};
+    
+// Called if info failed, usually becuause of a timeout.
+HMC.info_did_fail = function(handler, error) {
+    if (HMC.handler === handler) {
+        HMC.handler = null;
+        alert("Error getting server information\n" + error + "\n");
+        HMC.finish_connection();
+    }
+};
+
+HMC.authenticate = function(password) {
+    SendCommand( "PASS " + password + " " + hyperms.version_info.version );
+};
+
+HMC.show_password_dialog = function() {
+    // showModalDialog is a IE only extenstion:
+    // http://msdn.microsoft.com/en-us/library/ms536759(VS.85).aspx
+    return showModalDialog('password-ie.html', "test", 'status:no;help:no');
+};
+
+HMC.hide_connect_button = function() {
+    document.getElementById( "DIV_Connect" ).innerHTML = "";
+};
+
+HMC.start_connection = function() {
+	if ( HMC.connection_state != "NotConnected" )
+		return;
+	
+	HMC.set_connection_text("Connecting to server...");
+
+	var strCmd = 'ConnectToAddress ' + HMC.server_address + ' ' + HMC.server_port;
+    sendLocalCommand( strCmd );
+};
+
+HMC.finish_connection = function() {
+    var txt = HMC.render_connection_text();
+    HMC.set_connection_text(txt);
+	var diag = typeof(parent.frames[1].cardDiag);
+	if ( diag == "function" )
+	{
+		parent.frames[1].cardDiag();
+	}
+};
+
+// Returns html fragment with connection state table
+HMC.render_connection_text = function() {
+
+    var version = function(name) {
+        return HMC.info.packages[name] && HMC.info.packages[name].version || "";
+    };
+
+    var status = function(name) {
+        return HMC.info.packages[name] && HMC.info.status[name] || "";
+    };
+
+    var card = function(code) {
+        return {S: "SU", A: "AC"}[code] || "";
+    };
+
+    var table = [
+        ['Package',         version('config'),              ""],
+        ['HMC',             hyperms.version_info.string,    ""],
+        ['Model',           HMC.info.model_name,            ""],
+        ['Media Card',      card(HMC.info.media_card),      ""],
+        ['HGS',             version('hgs'),                 status('hgs')],
+        ['SGW',             version('signalgw'),            status('signalgw')],
+        ['HyperConnect',    version('callbacks'),           HMC.info.status.hypersaving || ""],
+        ['HyperGuard',      version('human'),               status('human')],
+        ['HyperID',         version('otp'),                 HMC.info.status.hyperid || ""],
+        ['LNP',             version('nps'),                 status('nps')],
+        ['SMS Campaigner',  version('websms'),              status('websms')],
+        ['SMS Pro Server',  version('sms_server'),          status('sms_server')]
+    ];
+
+    var html = '';
+    html += '<center>\n';
+    html += '<table>\n';
+	if ( typeof(parent.frames[1].cardDiag) == "function" )
+	{
+	    html += '<tr><td align=\"center\"><table style="width:500px;">\n';
+	}
+    for (var i in table) {
+        var row = table[i];
+        var bg = (i % 2) ? '#fdfdfd' : '#efefef';
+        html += '<tr bgcolor="' + bg + '">\n';
+        html += '<td>' + row[0] + '</td>\n';
+        html += '<td>' + row[1] + '</td>\n';
+        html += '<td class="status';
+        var status = row[2];
+        if (status.length)
+            html += ' ' + status;
+        html += '">' + status + '</td>\n';
+        html += '</tr>\n'
+    }
+
+    html += '</table>\n';
+	if ( typeof(parent.frames[1].cardDiag) == "function" )
+	{
+	    html += "<tr><td><button onclick='parent.frames[1].verify(false);'>Verify Hardware &amp; Warranty</button>&nbsp;&nbsp;";
+        html += "<button onclick='parent.frames[1].verify(true);'>Warranty Config</button>&nbsp;&nbsp;";
+        html += "<button onclick='parent.frames[1].lead();'>Salesforce Lead</button>&nbsp;&nbsp;";
+		//html += "<button onclick='parent.frames[1].fnSelect(\"idSerials\");'>Select Table</button>";
+        html += "</td></tr><tr>\n";
+		html += '<td><div id="idSerials" style="width:100%; height:315px; overflow: auto; padding: 10px; border: 1px solid black; background-color:#F3F3E9;">';
+	    html += '</div></td></tr></table>';
+	}
+    html += '</center>\n';
+
+    return html;
+};
+
+HMC.render_error = function(message, info) {
+    return '<div class="error"><h3>' + message + '</h3><p>' + info + '</p></div>';
+};
+
+// Split once and return the rest of the strigng after the delimeter, unlike
+// String.split() when used with a limit.
+HMC.split_once = function(s, delimeter) {
+    var sep = s.indexOf(delimeter);
+    if (sep === -1)
+        return [s];
+    else
+        return [s.substring(0, sep), s.substring(sep + 1)];
+};
+
+HMC.resize_tree = function() {
+  var myWidth = 0, myHeight = 0;
+  if( typeof( window.innerWidth ) == 'number' ) {
+    //Non-IE
+    myWidth = window.innerWidth;
+    myHeight = window.innerHeight;
+  } else if( document.documentElement && ( document.documentElement.clientWidth || document.documentElement.clientHeight ) ) {
+    //IE 6+ in 'standards compliant mode'
+    myWidth = document.documentElement.clientWidth;
+    myHeight = document.documentElement.clientHeight;
+  } else if( document.body && ( document.body.clientWidth || document.body.clientHeight ) ) {
+    //IE 4 compatible
+    myWidth = document.body.clientWidth;
+    myHeight = document.body.clientHeight;
+  }
+  var strDivHeight = (myHeight-180) + "px";
+  if  (parseInt( strDivHeight ) < 50)
+    return;
+  document.getElementById( "idDtree" ).style.height = strDivHeight;
+};
+
+HMC.set_connection_text = function( html ) {
+    HMC.connection_text = html;
+    if (typeof(parent.frames[1].setConnectionText) != "undefined" )
+		parent.frames[1].setConnectionText( html );
+};
+
+// Loads page path from the server with optional query string arguemnts in
+// frame ctx.
+HMC.load = function(ctx, path, query) {
+    if (!query)
+        query = {};
+    query.password = HMC.password;
+    var qs = HMC.encode_query_string(query);
+    var href = 'http://' + HMC.server_address + path + '?' + qs;
+    ctx.document.location.href = href;
+};
+
+// Encodes query string from query properties.
+HMC.encode_query_string = function(query) {
+    var qs = '';
+    for (var name in query) {
+        if (qs !== '')
+            qs += '&';
+        qs += encodeURIComponent(name) + '=' + encodeURIComponent(query[name]);
+    }
+    return qs;
+};
+
+</script>
+
+<object id="MaptiveX" width="1" height="1"
+     classid="CLSID:a5243cda-45bb-408e-8bb6-f999692c77a3"
+     codebase="HMX.ocx"></object>
+
+<center><IMG alt=HyperMS src="hyperms-small.gif"></center>
+<div id="IdConnect"></div>
+<font size="2" face="Arial">
+<div id="DIV_HGSAddr">
+</div>
+</font>
+<br>
+<div id="idDtree" class="dtree" style="width: 220px; height: 480px; overflow: auto;">
+<script type="text/javascript" src="./utils/dtreedata.js"></script>
+<script>
+if ( HMC.is_standalone )
+{
+	d.add(nIndex++,nServerSettings,'IP Address', HMC.server_settings_url );
+}
+document.write(d);
+</script>
+
+</div>
+
+</body>
+</html>
